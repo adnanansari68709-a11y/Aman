@@ -115,6 +115,12 @@
     <priority>0.8</priority>
   </url>
   <url>
+    <loc>https://velora-digital-archive.netlify.app/file/velora-production-keynote-2026</loc>
+    <lastmod>2026-09-05</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
     <loc>https://velora-digital-archive.netlify.app/file/velora-enterprise-architecture-blueprint-2026</loc>
     <lastmod>2026-09-03</lastmod>
     <changefreq>weekly</changefreq>

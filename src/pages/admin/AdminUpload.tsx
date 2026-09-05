@@ -38,16 +38,24 @@ export const AdminUpload: React.FC<AdminUploadProps> = ({ onNavigate, onUploaded
   const [error, setError] = useState<string | null>(null);
   const [createdResource, setCreatedResource] = useState<FileResource | null>(null);
 
+  const [maxFileSizeMB, setMaxFileSizeMB] = useState(100);
+
   const fileInputRef = useRef<HTMLInputElement>(null);
   const thumbInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     async function loadCategories() {
       try {
-        const cats = await api.getCategories();
+        const [cats, cfg] = await Promise.all([
+          api.getCategories(),
+          api.getConfig().catch(() => null)
+        ]);
         setCategories(cats);
         if (cats.length > 0 && !categoryId) {
           setCategoryId(cats[0].id);
+        }
+        if (cfg?.maxFileSizeMB) {
+          setMaxFileSizeMB(cfg.maxFileSizeMB);
         }
       } catch (err) {
         console.error('Failed to load categories:', err);
@@ -56,8 +64,8 @@ export const AdminUpload: React.FC<AdminUploadProps> = ({ onNavigate, onUploaded
     loadCategories();
   }, []);
 
-  const DANGEROUS_EXTENSIONS = ['.exe', '.bat', '.cmd', '.scr', '.vbs', '.msi', '.pif', '.application', '.gadget'];
-  const MAX_FILE_SIZE_BYTES = 50 * 1024 * 1024; // 50MB
+  const DANGEROUS_EXTENSIONS = ['.exe', '.bat', '.cmd', '.scr', '.vbs', '.msi', '.pif', '.application', '.gadget', '.com', '.ps1', '.sh', '.bash'];
+  const maxFileSizeBytes = maxFileSizeMB * 1024 * 1024;
   const MAX_THUMB_SIZE_BYTES = 5 * 1024 * 1024; // 5MB
 
   const handleFileSelect = (f: File) => {
@@ -69,8 +77,8 @@ export const AdminUpload: React.FC<AdminUploadProps> = ({ onNavigate, onUploaded
       return;
     }
 
-    if (f.size > MAX_FILE_SIZE_BYTES) {
-      setError(`File size (${formatBytes(f.size)}) exceeds the maximum allowed threshold of 50MB.`);
+    if (f.size > maxFileSizeBytes) {
+      setError(`File size (${formatBytes(f.size)}) exceeds the maximum allowed threshold of ${maxFileSizeMB}MB.`);
       setPrimaryFile(null);
       return;
     }
@@ -308,7 +316,7 @@ export const AdminUpload: React.FC<AdminUploadProps> = ({ onNavigate, onUploaded
                     Drag and drop file here, or click to browse
                   </div>
                   <p className="text-zinc-500 text-xs max-w-sm">
-                    Supports PDF, DOCX, ZIP, MP4, MP3, SVG, CSV, JSON, PNG, WEBP and more up to 50MB.
+                    Supports PDF, DOCX, ZIP, MP4, MP3, SVG, CSV, JSON, PNG, WEBP and more up to {maxFileSizeMB}MB.
                   </p>
                 </div>
               )}

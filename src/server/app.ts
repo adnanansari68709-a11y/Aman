@@ -31,7 +31,7 @@ export function createApiApp() {
   app.use(cookieParser());
 
   // 3. File upload configuration (in-memory for maximum portability across Node and serverless)
-  const maxMb = Number(process.env.MAX_FILE_SIZE_MB) || 50;
+  const maxMb = Number(process.env.MAX_FILE_SIZE_MB) || siteConfig.maxFileSizeMB || 100;
   const maxBytes = maxMb * 1024 * 1024;
   const upload = multer({
     storage: multer.memoryStorage(),
@@ -39,6 +39,53 @@ export function createApiApp() {
       fileSize: maxBytes
     }
   });
+
+  const DANGEROUS_EXTENSIONS = new Set([
+    '.exe', '.bat', '.cmd', '.scr', '.vbs', '.msi', '.pif', '.application', '.gadget', '.com', '.ps1', '.sh', '.bash'
+  ]);
+
+  function validateBinaryFile(
+    filePath: string,
+    fileName: string,
+    mimeType: string,
+    fileSize: number
+  ): { valid: boolean; status: number; error?: string } {
+    if (fileSize <= 0) {
+      return { valid: false, status: 400, error: 'Resource file payload cannot be empty (0 bytes).' };
+    }
+    if (fileSize > maxBytes) {
+      return { valid: false, status: 413, error: `File payload exceeds maximum allowed size (${maxMb} MB).` };
+    }
+
+    const ext = path.extname(fileName).toLowerCase();
+    if (!ext) {
+      return { valid: false, status: 400, error: 'Resource file must contain a valid file extension.' };
+    }
+    if (DANGEROUS_EXTENSIONS.has(ext)) {
+      return { valid: false, status: 400, error: `Security Restriction: Executable and script binaries (${ext}) cannot be uploaded.` };
+    }
+
+    // Inspect video/mp4 headers
+    if (ext === '.mp4' || mimeType === 'video/mp4') {
+      if (fileSize < 16) {
+        return { valid: false, status: 400, error: 'Invalid MP4 file structure: file size is smaller than header minimum.' };
+      }
+      try {
+        const fd = fs.openSync(filePath, 'r');
+        const headerBuf = Buffer.alloc(12);
+        fs.readSync(fd, headerBuf, 0, 12, 0);
+        fs.closeSync(fd);
+        const ftyp = headerBuf.toString('ascii', 4, 8);
+        if (ftyp !== 'ftyp') {
+          return { valid: false, status: 400, error: 'Invalid MP4 video format: missing standard ISO Base Media ftyp signature.' };
+        }
+      } catch (err: any) {
+        return { valid: false, status: 400, error: `Failed to inspect MP4 binary headers: ${err.message}` };
+      }
+    }
+
+    return { valid: true, status: 200 };
+  }
 
   const handleUploadErrors = (middleware: any) => {
     return (req: Request, res: Response, next: NextFunction) => {
@@ -402,6 +449,13 @@ export function createApiApp() {
 
         const savedFile = await storage.saveFile(uploadedFile, 'files');
 
+        const fullSavedPath = storage.getFullPath(savedFile.storagePath);
+        const validation = validateBinaryFile(fullSavedPath, uploadedFile.originalname, savedFile.mimeType, savedFile.fileSize);
+        if (!validation.valid) {
+          await storage.deleteFile(savedFile.storagePath);
+          return res.status(validation.status).json({ success: false, error: validation.error });
+        }
+
         let finalThumbnailUrl = customThumbnailUrl || '';
         const uploadedThumb = files?.['thumbnail']?.[0];
         if (uploadedThumb) {
@@ -436,6 +490,155 @@ export function createApiApp() {
       } catch (err: any) {
         console.error('Upload handling error:', err);
         res.status(500).json({ success: false, error: err.message || 'File processing failed.' });
+      }
+    }
+  );
+
+  // ==========================================
+  // CHUNKED UPLOAD ENDPOINTS (For large files & serverless payload limits)
+  // ==========================================
+
+  router.post(
+    '/admin/files/chunk',
+    requireAdminAuth,
+    handleUploadErrors(upload.single('chunk')),
+    async (req: AuthenticatedRequest, res: Response) => {
+      try {
+        const { uploadId, chunkIndex, totalChunks } = req.body;
+        const chunk = req.file;
+
+        if (!uploadId || !/^[a-zA-Z0-9_-]{6,64}$/.test(uploadId)) {
+          return res.status(400).json({ success: false, error: 'Valid upload identifier is required.' });
+        }
+        const index = parseInt(chunkIndex, 10);
+        const total = parseInt(totalChunks, 10);
+        if (isNaN(index) || isNaN(total) || index < 0 || total <= 0 || index >= total) {
+          return res.status(400).json({ success: false, error: 'Invalid chunk indexing parameters.' });
+        }
+        if (!chunk || !chunk.buffer || chunk.buffer.length === 0) {
+          return res.status(400).json({ success: false, error: 'Missing chunk binary payload.' });
+        }
+
+        await storage.saveChunk(uploadId, index, chunk.buffer);
+        res.json({ success: true, uploadId, chunkIndex: index, received: true });
+      } catch (err: any) {
+        console.error('Error saving chunk:', err);
+        res.status(500).json({ success: false, error: err.message || 'Failed to persist upload chunk.' });
+      }
+    }
+  );
+
+  router.get('/admin/files/chunk-status', requireAdminAuth, (req: AuthenticatedRequest, res: Response) => {
+    const uploadId = req.query.uploadId as string;
+    if (!uploadId) {
+      return res.status(400).json({ success: false, error: 'uploadId parameter is required.' });
+    }
+    const existing = storage.getExistingChunks(uploadId);
+    res.json({ success: true, uploadId, existingChunks: existing });
+  });
+
+  router.post(
+    '/admin/files/finalize-chunk',
+    requireAdminAuth,
+    handleUploadErrors(upload.single('thumbnail')),
+    async (req: AuthenticatedRequest, res: Response) => {
+      try {
+        const {
+          uploadId,
+          totalChunks,
+          fileName,
+          fileSize,
+          mimeType,
+          title,
+          description,
+          categoryId,
+          tags,
+          version,
+          featured,
+          published,
+          customThumbnailUrl
+        } = req.body;
+
+        if (!title || !title.trim()) {
+          return res.status(400).json({ success: false, error: 'Resource title is mandatory.' });
+        }
+        if (!categoryId) {
+          return res.status(400).json({ success: false, error: 'Category assignment is required.' });
+        }
+        const category = db.getCategoryById(categoryId);
+        if (!category) {
+          return res.status(400).json({ success: false, error: 'Designated category does not exist.' });
+        }
+        if (!fileName || typeof fileName !== 'string') {
+          return res.status(400).json({ success: false, error: 'Resource file name is required.' });
+        }
+        if (!uploadId) {
+          return res.status(400).json({ success: false, error: 'Upload identifier is required.' });
+        }
+        const total = parseInt(totalChunks, 10);
+        if (isNaN(total) || total <= 0) {
+          return res.status(400).json({ success: false, error: 'Invalid total chunks count.' });
+        }
+
+        const existing = storage.getExistingChunks(uploadId);
+        if (existing.length < total) {
+          const missing: number[] = [];
+          for (let i = 0; i < total; i++) {
+            if (!existing.includes(i)) missing.push(i);
+          }
+          return res.status(400).json({
+            success: false,
+            error: `Incomplete upload: received ${existing.length} of ${total} chunks.`,
+            missingChunks: missing
+          });
+        }
+
+        // Assemble chunks into final file
+        const savedFile = await storage.assembleChunks(uploadId, total, fileName, mimeType || 'application/octet-stream', 'files');
+        const fullSavedPath = storage.getFullPath(savedFile.storagePath);
+
+        // Validate assembled binary
+        const validation = validateBinaryFile(fullSavedPath, fileName, savedFile.mimeType, savedFile.fileSize);
+        if (!validation.valid) {
+          await storage.deleteFile(savedFile.storagePath);
+          return res.status(validation.status).json({ success: false, error: validation.error });
+        }
+
+        // Handle optional thumbnail
+        let finalThumbnailUrl = customThumbnailUrl || '';
+        const uploadedThumb = req.file;
+        if (uploadedThumb) {
+          const savedThumb = await storage.saveFile(uploadedThumb, 'thumbnails');
+          finalThumbnailUrl = savedThumb.publicUrl;
+        }
+
+        let parsedTags: string[] = [];
+        if (typeof tags === 'string') {
+          parsedTags = tags.split(',').map(t => t.trim()).filter(Boolean);
+        } else if (Array.isArray(tags)) {
+          parsedTags = tags;
+        }
+
+        const newResource = db.createFile({
+          title: title.trim(),
+          description: description ? description.trim() : '',
+          categoryId,
+          fileUrl: savedFile.publicUrl,
+          storagePath: savedFile.storagePath,
+          thumbnailUrl: finalThumbnailUrl,
+          fileName: savedFile.fileName,
+          mimeType: savedFile.mimeType,
+          fileSize: savedFile.fileSize,
+          version: version ? version.trim() : '1.0.0',
+          tags: parsedTags,
+          featured: featured === 'true' || featured === true,
+          published: published === 'true' || published === true
+        });
+
+        res.status(201).json({ success: true, data: newResource });
+      } catch (err: any) {
+        console.error('Finalize chunked upload error:', err);
+        res.status(500).json({ success: false, error: err.message || 'Failed to finalize resource.' });
       }
     }
   );
@@ -497,11 +700,18 @@ export function createApiApp() {
       }
 
       try {
+        const savedNew = await storage.saveFile(file, 'files');
+        const fullSavedPath = storage.getFullPath(savedNew.storagePath);
+
+        const validation = validateBinaryFile(fullSavedPath, file.originalname, savedNew.mimeType, savedNew.fileSize);
+        if (!validation.valid) {
+          await storage.deleteFile(savedNew.storagePath);
+          return res.status(validation.status).json({ success: false, error: validation.error });
+        }
+
         if (existing.storagePath) {
           await storage.deleteFile(existing.storagePath);
         }
-
-        const savedNew = await storage.saveFile(file, 'files');
 
         const updated = db.updateFile(id, {
           fileUrl: savedNew.publicUrl,
@@ -514,6 +724,60 @@ export function createApiApp() {
         res.json({ success: true, data: updated });
       } catch (err: any) {
         res.status(500).json({ success: false, error: err.message || 'Error during file replacement.' });
+      }
+    }
+  );
+
+  router.post(
+    '/admin/files/:id/finalize-replace-chunk',
+    requireAdminAuth,
+    async (req: AuthenticatedRequest, res: Response) => {
+      const { id } = req.params;
+      const { uploadId, totalChunks, fileName, mimeType } = req.body;
+
+      const existing = db.getFileById(id);
+      if (!existing) {
+        return res.status(404).json({ success: false, error: 'Resource to replace not found.' });
+      }
+      if (!uploadId) {
+        return res.status(400).json({ success: false, error: 'Upload identifier is required.' });
+      }
+      const total = parseInt(totalChunks, 10);
+      if (isNaN(total) || total <= 0) {
+        return res.status(400).json({ success: false, error: 'Invalid total chunks count.' });
+      }
+
+      const existingChunks = storage.getExistingChunks(uploadId);
+      if (existingChunks.length < total) {
+        return res.status(400).json({ success: false, error: 'Incomplete upload chunks for replacement.' });
+      }
+
+      try {
+        const savedNew = await storage.assembleChunks(uploadId, total, fileName || 'replacement_binary', mimeType || 'application/octet-stream', 'files');
+        const fullSavedPath = storage.getFullPath(savedNew.storagePath);
+
+        const validation = validateBinaryFile(fullSavedPath, savedNew.fileName, savedNew.mimeType, savedNew.fileSize);
+        if (!validation.valid) {
+          await storage.deleteFile(savedNew.storagePath);
+          return res.status(validation.status).json({ success: false, error: validation.error });
+        }
+
+        if (existing.storagePath) {
+          await storage.deleteFile(existing.storagePath);
+        }
+
+        const updated = db.updateFile(id, {
+          fileUrl: savedNew.publicUrl,
+          storagePath: savedNew.storagePath,
+          fileName: savedNew.fileName,
+          mimeType: savedNew.mimeType,
+          fileSize: savedNew.fileSize
+        });
+
+        res.json({ success: true, data: updated });
+      } catch (err: any) {
+        console.error('Error during chunked file replacement:', err);
+        res.status(500).json({ success: false, error: err.message || 'Error during chunked file replacement.' });
       }
     }
   );

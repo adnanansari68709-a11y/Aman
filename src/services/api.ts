@@ -57,11 +57,34 @@ class ApiService {
       headers
     });
 
-    const isJson = res.headers.get('content-type')?.includes('application/json');
-    const data = isJson ? await res.json() : null;
+    const contentType = res.headers.get('content-type') || '';
+    let data: any = null;
+    let rawText = '';
+    if (contentType.includes('application/json')) {
+      try {
+        data = await res.json();
+      } catch {
+        // ignore parse failure
+      }
+    } else {
+      try {
+        rawText = await res.text();
+      } catch {
+        // ignore text read failure
+      }
+    }
 
     if (!res.ok) {
-      const errorMsg = data?.error || `Request failed with status ${res.status}`;
+      let errorMsg = data?.error || data?.message;
+      if (!errorMsg && rawText) {
+        const clean = rawText.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+        if (clean && clean.length < 250) {
+          errorMsg = clean;
+        }
+      }
+      if (!errorMsg) {
+        errorMsg = `Request failed with status ${res.status}`;
+      }
       throw new ApiError(errorMsg, res.status);
     }
 
@@ -236,12 +259,111 @@ class ApiService {
     };
   }
 
-  public async uploadFile(formData: FormData): Promise<FileResource> {
-    const res = await this.request<any>('/api/admin/files', {
+  public async uploadFile(
+    formData: FormData,
+    onProgress?: (percent: number) => void
+  ): Promise<FileResource> {
+    const file = formData.get('file') as File | null;
+    if (!file) {
+      throw new ApiError('No primary archive or resource file specified.', 400);
+    }
+
+    const CHUNK_SIZE = 3 * 1024 * 1024; // 3 MB chunks (safely within Netlify 6MB gateway payload limit)
+
+    // Direct single-request upload for small files (<= 3.5MB)
+    if (file.size <= 3.5 * 1024 * 1024) {
+      try {
+        const res = await this.request<any>('/api/admin/files', {
+          method: 'POST',
+          body: formData
+        });
+        if (onProgress) onProgress(100);
+        return res?.data ?? res;
+      } catch (err: any) {
+        console.warn('Direct upload failed or rejected, falling back to chunked transfer:', err);
+      }
+    }
+
+    // Resilient chunked upload flow
+    const uploadId = `upl_${Date.now()}_${Math.random().toString(36).substring(2, 10)}`;
+    const totalChunks = Math.ceil(file.size / CHUNK_SIZE);
+
+    for (let chunkIndex = 0; chunkIndex < totalChunks; chunkIndex++) {
+      const start = chunkIndex * CHUNK_SIZE;
+      const end = Math.min(start + CHUNK_SIZE, file.size);
+      const chunkBlob = file.slice(start, end);
+
+      const chunkFormData = new FormData();
+      chunkFormData.append('uploadId', uploadId);
+      chunkFormData.append('chunkIndex', String(chunkIndex));
+      chunkFormData.append('totalChunks', String(totalChunks));
+      chunkFormData.append('chunk', chunkBlob, file.name);
+
+      let chunkSuccess = false;
+      let lastErr: any = null;
+      for (let attempt = 0; attempt < 3; attempt++) {
+        try {
+          await this.request<any>('/api/admin/files/chunk', {
+            method: 'POST',
+            body: chunkFormData
+          });
+          chunkSuccess = true;
+          break;
+        } catch (err: any) {
+          lastErr = err;
+          await new Promise((r) => setTimeout(r, 350 * (attempt + 1)));
+        }
+      }
+
+      if (!chunkSuccess) {
+        throw new ApiError(
+          `Failed to transfer chunk ${chunkIndex + 1} of ${totalChunks}: ${lastErr?.message || 'Network error'}`,
+          lastErr?.status || 500
+        );
+      }
+
+      if (onProgress) {
+        onProgress(Math.round(((chunkIndex + 1) / totalChunks) * 90));
+      }
+    }
+
+    // Finalize chunked ingestion
+    const finalizeFormData = new FormData();
+    finalizeFormData.append('uploadId', uploadId);
+    finalizeFormData.append('totalChunks', String(totalChunks));
+    finalizeFormData.append('fileName', file.name);
+    finalizeFormData.append('fileSize', String(file.size));
+    finalizeFormData.append('mimeType', file.type || 'application/octet-stream');
+
+    const fieldsToForward = [
+      'title',
+      'description',
+      'categoryId',
+      'tags',
+      'version',
+      'featured',
+      'published',
+      'customThumbnailUrl'
+    ];
+    for (const f of fieldsToForward) {
+      const val = formData.get(f);
+      if (val !== null && val !== undefined) {
+        finalizeFormData.append(f, val as string);
+      }
+    }
+
+    const thumb = formData.get('thumbnail');
+    if (thumb instanceof File) {
+      finalizeFormData.append('thumbnail', thumb);
+    }
+
+    const finalizeRes = await this.request<any>('/api/admin/files/finalize-chunk', {
       method: 'POST',
-      body: formData
+      body: finalizeFormData
     });
-    return res?.data ?? res;
+
+    if (onProgress) onProgress(100);
+    return finalizeRes?.data ?? finalizeRes;
   }
 
   public async updateFile(id: string, updates: Partial<FileResource>): Promise<FileResource> {
@@ -252,13 +374,64 @@ class ApiService {
     return res?.data ?? res;
   }
 
-  public async replaceFileBinary(id: string, file: File): Promise<FileResource> {
-    const formData = new FormData();
-    formData.append('file', file);
-    const res = await this.request<any>(`/api/admin/files/${id}/replace`, {
+  public async replaceFileBinary(
+    id: string,
+    file: File,
+    onProgress?: (percent: number) => void
+  ): Promise<FileResource> {
+    const CHUNK_SIZE = 3 * 1024 * 1024;
+    if (file.size <= 3.5 * 1024 * 1024) {
+      try {
+        const formData = new FormData();
+        formData.append('file', file);
+        const res = await this.request<any>(`/api/admin/files/${id}/replace`, {
+          method: 'POST',
+          body: formData
+        });
+        if (onProgress) onProgress(100);
+        return res?.data ?? res;
+      } catch (err: any) {
+        console.warn('Direct binary replacement failed, attempting chunked fallback:', err);
+      }
+    }
+
+    const uploadId = `rep_${Date.now()}_${Math.random().toString(36).substring(2, 10)}`;
+    const totalChunks = Math.ceil(file.size / CHUNK_SIZE);
+
+    for (let chunkIndex = 0; chunkIndex < totalChunks; chunkIndex++) {
+      const start = chunkIndex * CHUNK_SIZE;
+      const end = Math.min(start + CHUNK_SIZE, file.size);
+      const chunkBlob = file.slice(start, end);
+
+      const chunkFormData = new FormData();
+      chunkFormData.append('uploadId', uploadId);
+      chunkFormData.append('chunkIndex', String(chunkIndex));
+      chunkFormData.append('totalChunks', String(totalChunks));
+      chunkFormData.append('chunk', chunkBlob, file.name);
+
+      await this.request<any>('/api/admin/files/chunk', {
+        method: 'POST',
+        body: chunkFormData
+      });
+
+      if (onProgress) {
+        onProgress(Math.round(((chunkIndex + 1) / totalChunks) * 90));
+      }
+    }
+
+    const finalizeFormData = new FormData();
+    finalizeFormData.append('uploadId', uploadId);
+    finalizeFormData.append('totalChunks', String(totalChunks));
+    finalizeFormData.append('fileName', file.name);
+    finalizeFormData.append('fileSize', String(file.size));
+    finalizeFormData.append('mimeType', file.type || 'application/octet-stream');
+
+    const res = await this.request<any>(`/api/admin/files/${id}/finalize-replace-chunk`, {
       method: 'POST',
-      body: formData
+      body: finalizeFormData
     });
+
+    if (onProgress) onProgress(100);
     return res?.data ?? res;
   }
 

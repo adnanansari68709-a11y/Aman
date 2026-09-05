@@ -17,6 +17,10 @@ export interface IStorageProvider {
   deleteFile(storagePath: string): Promise<boolean>;
   fileExists(storagePath: string): boolean;
   saveBuffer(buffer: Buffer, fileName: string, mimeType: string, subFolder?: string): Promise<SavedFileInfo>;
+  saveChunk(uploadId: string, chunkIndex: number, buffer: Buffer): Promise<void>;
+  getExistingChunks(uploadId: string): number[];
+  assembleChunks(uploadId: string, totalChunks: number, originalName: string, mimeType: string, subFolder?: string): Promise<SavedFileInfo>;
+  cleanChunks(uploadId: string): void;
 }
 
 export class LocalStorageProvider implements IStorageProvider {
@@ -148,6 +152,96 @@ export class LocalStorageProvider implements IStorageProvider {
 
   public getFullPath(storagePath: string): string {
     return path.isAbsolute(storagePath) ? storagePath : path.join(this.baseDir, storagePath);
+  }
+
+  public async saveChunk(uploadId: string, chunkIndex: number, buffer: Buffer): Promise<void> {
+    const sanitizedId = uploadId.replace(/[^a-zA-Z0-9_-]/g, '');
+    const chunkDir = path.join(this.baseDir, '_chunks', sanitizedId);
+    this.ensureDirectory(chunkDir);
+    const chunkFile = path.join(chunkDir, `part_${chunkIndex}`);
+    fs.writeFileSync(chunkFile, buffer);
+  }
+
+  public getExistingChunks(uploadId: string): number[] {
+    const sanitizedId = uploadId.replace(/[^a-zA-Z0-9_-]/g, '');
+    const chunkDir = path.join(this.baseDir, '_chunks', sanitizedId);
+    if (!fs.existsSync(chunkDir)) return [];
+    try {
+      const files = fs.readdirSync(chunkDir);
+      return files
+        .filter(f => f.startsWith('part_'))
+        .map(f => parseInt(f.replace('part_', ''), 10))
+        .filter(n => !isNaN(n))
+        .sort((a, b) => a - b);
+    } catch {
+      return [];
+    }
+  }
+
+  public async assembleChunks(
+    uploadId: string,
+    totalChunks: number,
+    originalName: string,
+    mimeType: string,
+    subFolder: string = 'files'
+  ): Promise<SavedFileInfo> {
+    const sanitizedId = uploadId.replace(/[^a-zA-Z0-9_-]/g, '');
+    const chunkDir = path.join(this.baseDir, '_chunks', sanitizedId);
+    const targetFolder = path.join(this.baseDir, subFolder);
+    this.ensureDirectory(targetFolder);
+
+    const safeName = originalName.replace(/[^a-zA-Z0-9._-]/g, '_');
+    const uniqueName = `${Date.now()}_${Math.random().toString(36).substring(2, 8)}_${safeName}`;
+    const targetPath = path.join(targetFolder, uniqueName);
+
+    const writeStream = fs.createWriteStream(targetPath);
+    for (let i = 0; i < totalChunks; i++) {
+      const partPath = path.join(chunkDir, `part_${i}`);
+      if (!fs.existsSync(partPath)) {
+        writeStream.close();
+        try { if (fs.existsSync(targetPath)) fs.unlinkSync(targetPath); } catch {}
+        throw new Error(`Upload payload chunk ${i} of ${totalChunks} was not found on storage.`);
+      }
+      const partBuf = fs.readFileSync(partPath);
+      writeStream.write(partBuf);
+    }
+
+    await new Promise<void>((resolve, reject) => {
+      writeStream.end((err?: Error | null) => {
+        if (err) reject(err);
+        else resolve();
+      });
+    });
+
+    const stat = fs.statSync(targetPath);
+
+    // Clean up temporary chunk pieces
+    try {
+      if (fs.existsSync(chunkDir)) {
+        fs.rmSync(chunkDir, { recursive: true, force: true });
+      }
+    } catch (e) {
+      console.warn('Notice: could not clean chunk directory:', e);
+    }
+
+    const relativePath = path.join(subFolder, uniqueName);
+    return {
+      fileName: originalName,
+      storagePath: relativePath,
+      fileSize: stat.size,
+      mimeType: mimeType || 'application/octet-stream',
+      publicUrl: `/api/public/files/raw/${relativePath.replace(/\\/g, '/')}`
+    };
+  }
+
+  public cleanChunks(uploadId: string): void {
+    const sanitizedId = uploadId.replace(/[^a-zA-Z0-9_-]/g, '');
+    const chunkDir = path.join(this.baseDir, '_chunks', sanitizedId);
+    try {
+      if (fs.existsSync(chunkDir)) {
+        fs.rmSync(chunkDir, { recursive: true, force: true });
+      }
+    } catch {}
   }
 }
 

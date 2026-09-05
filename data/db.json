@@ -2,7 +2,7 @@
   "admins": [
     {
       "id": "admin_primary_01",
-      "email": "admin@velora.digital",
+      "email": "singapore5806461@gmail.com",
       "name": "Velora Master Admin",
       "passwordHash": "$2b$10$Ijl.8iYbaIbOiFIvGe.h6.AbnqOMIGAMlixlZJBZlkuPMF5czshOW",
       "createdAt": "2026-09-05T09:52:41.643Z",
@@ -132,6 +132,51 @@
     }
   ],
   "files": [
+    {
+      "title": "Velora Production Keynote 2026",
+      "description": "High-definition 17.8MB MP4 demonstration asset",
+      "categoryId": "cat_videos",
+      "fileUrl": "/api/public/files/raw/files/1788630820474_7qzzdq_production_presentation_17_8mb.mp4",
+      "storagePath": "files/1788630820474_7qzzdq_production_presentation_17_8mb.mp4",
+      "thumbnailUrl": "",
+      "fileName": "production_presentation_17_8mb.mp4",
+      "mimeType": "video/mp4",
+      "fileSize": 18664653,
+      "version": "2.4.0",
+      "tags": [
+        "keynote",
+        "hd",
+        "mp4",
+        "official"
+      ],
+      "featured": true,
+      "published": true,
+      "id": "file_1788630820559_0i1y13",
+      "slug": "velora-production-keynote-2026",
+      "downloadCount": 0,
+      "createdAt": "2026-09-05T17:53:40.559Z",
+      "updatedAt": "2026-09-05T17:53:40.559Z"
+    },
+    {
+      "title": "Sample Video Asset",
+      "description": "",
+      "categoryId": "cat_videos",
+      "fileUrl": "/api/public/files/raw/files/1788630286166_6k7vyc_sample_2mb.mp4",
+      "storagePath": "files/1788630286166_6k7vyc_sample_2mb.mp4",
+      "thumbnailUrl": "",
+      "fileName": "sample_2mb.mp4",
+      "mimeType": "video/mp4",
+      "fileSize": 2097152,
+      "version": "1.0.0",
+      "tags": [],
+      "featured": false,
+      "published": false,
+      "id": "file_1788630286170_4rvego",
+      "slug": "sample-video-asset",
+      "downloadCount": 0,
+      "createdAt": "2026-09-05T17:44:46.170Z",
+      "updatedAt": "2026-09-05T17:44:46.170Z"
+    },
     {
       "id": "file_blueprint_01",
       "title": "VELORA Enterprise Architecture Blueprint 2026",

@@ -30,7 +30,7 @@ export const siteConfig: SiteConfig = {
   siteUrl: process.env.APP_URL || "https://velora-digital-archive.netlify.app",
   contactEmail: "concierge@velora.digital",
   defaultCategory: "documents",
-  maxFileSizeMB: 50,
+  maxFileSizeMB: Number(process.env.MAX_FILE_SIZE_MB) || 100,
   allowedFileTypes: [
     // Documents
     { extension: ".pdf", mime: "application/pdf", category: "documents", label: "PDF Document" },
