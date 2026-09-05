@@ -2,7 +2,7 @@
   "admins": [
     {
       "id": "admin_primary_01",
-      "email": "singapore5806461@gmail.com",
+      "email": "admin@velora.digital",
       "name": "Velora Master Admin",
       "passwordHash": "$2b$10$Ijl.8iYbaIbOiFIvGe.h6.AbnqOMIGAMlixlZJBZlkuPMF5czshOW",
       "createdAt": "2026-09-05T09:52:41.643Z",

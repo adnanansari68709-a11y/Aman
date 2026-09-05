@@ -76,9 +76,9 @@ export const Library: React.FC<LibraryProps> = ({
         });
 
         if (!cancelled) {
-          setFiles(res.files);
-          setTotal(res.total);
-          setTotalPages(res.totalPages || 1);
+          setFiles(res?.files || []);
+          setTotal(res?.total || 0);
+          setTotalPages(res?.totalPages || 1);
         }
       } catch (err) {
         console.error('Failed to fetch library files:', err);
@@ -200,7 +200,7 @@ export const Library: React.FC<LibraryProps> = ({
         >
           All Sectors ({total})
         </button>
-        {categories.map((cat) => {
+        {(categories || []).map((cat) => {
           const isSelected = selectedCategory.toLowerCase() === cat.slug.toLowerCase();
           return (
             <button
@@ -224,7 +224,7 @@ export const Library: React.FC<LibraryProps> = ({
           <Loader2 className="w-8 h-8 animate-spin text-[#D4AF37] mb-3" />
           <span className="text-sm font-light">Retrieving archive payloads...</span>
         </div>
-      ) : files.length === 0 ? (
+      ) : (files || []).length === 0 ? (
         <div className="py-20 text-center bg-white/5 border border-white/10 rounded-3xl p-10 max-w-lg mx-auto">
           <div className="w-12 h-12 rounded-full border border-[#D4AF37]/30 flex items-center justify-center mx-auto mb-4 text-[#D4AF37]">
             <Search className="w-6 h-6" />
@@ -243,7 +243,7 @@ export const Library: React.FC<LibraryProps> = ({
       ) : (
         <>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 mb-12">
-            {files.map((file) => (
+            {(files || []).map((file) => (
               <FileCard
                 key={file.id}
                 file={file}

@@ -23,15 +23,24 @@ export class LocalStorageProvider implements IStorageProvider {
   private baseDir: string;
 
   constructor(customBaseDir?: string) {
-    this.baseDir = customBaseDir || process.env.STORAGE_DIR || path.join(process.cwd(), 'data', 'uploads');
+    const isServerless = Boolean(
+      process.env.NETLIFY || 
+      process.env.AWS_LAMBDA_FUNCTION_NAME || 
+      process.env.LAMBDA_TASK_ROOT
+    );
+    this.baseDir = customBaseDir || process.env.STORAGE_DIR || (isServerless ? '/tmp/uploads' : path.join(process.cwd(), 'data', 'uploads'));
     this.ensureDirectory(this.baseDir);
     this.ensureDirectory(path.join(this.baseDir, 'thumbnails'));
     this.ensureDirectory(path.join(this.baseDir, 'files'));
   }
 
   private ensureDirectory(dirPath: string) {
-    if (!fs.existsSync(dirPath)) {
-      fs.mkdirSync(dirPath, { recursive: true });
+    try {
+      if (!fs.existsSync(dirPath)) {
+        fs.mkdirSync(dirPath, { recursive: true });
+      }
+    } catch (err) {
+      console.warn('Notice: could not create storage directory:', err);
     }
   }
 

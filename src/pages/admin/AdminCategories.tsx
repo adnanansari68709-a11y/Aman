@@ -53,7 +53,7 @@ export const AdminCategories: React.FC<AdminCategoriesProps> = ({ onNavigate }) 
     setLoading(true);
     try {
       const cats = await api.getAdminCategories();
-      setCategories(cats);
+      setCategories(Array.isArray(cats) ? cats : []);
     } catch (err) {
       console.error('Failed to load categories:', err);
     } finally {
@@ -191,7 +191,7 @@ export const AdminCategories: React.FC<AdminCategoriesProps> = ({ onNavigate }) 
         </div>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-          {categories.map((cat) => (
+          {(categories || []).map((cat) => (
             <div
               key={cat.id}
               className="bg-white/5 border border-white/10 p-6 rounded-3xl flex flex-col justify-between"

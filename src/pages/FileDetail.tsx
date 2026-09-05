@@ -298,9 +298,9 @@ export const FileDetail: React.FC<FileDetailProps> = ({
               </p>
 
               {/* Tags */}
-              {file.tags && file.tags.length > 0 && (
+              {(file.tags || []).length > 0 && (
                 <div className="flex flex-wrap gap-1.5 mb-8">
-                  {file.tags.map((tag) => (
+                  {(file.tags || []).map((tag) => (
                     <span
                       key={tag}
                       className="text-[10px] uppercase tracking-wider px-2.5 py-1 rounded-md bg-white/5 border border-white/10 text-zinc-400"
@@ -387,7 +387,7 @@ export const FileDetail: React.FC<FileDetailProps> = ({
       </div>
 
       {/* Related Resources in Same Sector */}
-      {file.related && file.related.length > 0 && (
+      {(file.related || []).length > 0 && (
         <section className="mt-16 pt-10 border-t border-white/5">
           <div className="flex items-center justify-between mb-8">
             <div>
@@ -407,7 +407,7 @@ export const FileDetail: React.FC<FileDetailProps> = ({
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-            {file.related.map((rel) => (
+            {(file.related || []).map((rel) => (
               <FileCard
                 key={rel.id}
                 file={rel}

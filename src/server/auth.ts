@@ -5,8 +5,16 @@ import { db } from './db';
 import { AdminUser } from '../types';
 
 // JWT_SECRET is used exclusively on the server for token signing and verification
-const fallbackSecret = crypto.randomBytes(32).toString('hex');
-const JWT_SECRET = process.env.JWT_SECRET || fallbackSecret;
+function getJwtSecret(): string {
+  if (process.env.JWT_SECRET && process.env.JWT_SECRET.trim()) {
+    return process.env.JWT_SECRET.trim();
+  }
+  // Stable deterministic fallback derived from configured admin credentials
+  return crypto
+    .createHash('sha256')
+    .update((process.env.ADMIN_EMAIL || '') + (process.env.ADMIN_PASSWORD || '') + 'velora_archive_jwt_secret_2026')
+    .digest('hex');
+}
 
 export interface AuthenticatedRequest extends Request {
   admin?: AdminUser;
@@ -19,14 +27,14 @@ export function generateAdminToken(admin: AdminUser): string {
       email: admin.email,
       name: admin.name
     },
-    JWT_SECRET,
+    getJwtSecret(),
     { expiresIn: '7d' }
   );
 }
 
 export function verifyAdminToken(token: string): AdminUser | null {
   try {
-    const decoded = jwt.verify(token, JWT_SECRET) as any;
+    const decoded = jwt.verify(token, getJwtSecret()) as any;
     return {
       id: decoded.id,
       email: decoded.email,

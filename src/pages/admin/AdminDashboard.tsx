@@ -50,7 +50,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onNavigate, onLo
   }
 
   // Calculate highest count for SVG chart scaling
-  const maxDownloadInDay = Math.max(...stats.downloadsOverTime.map((d) => d.count), 10);
+  const downloads = stats.downloadsOverTime || [];
+  const maxDownloadInDay = Math.max(...downloads.map((d) => d.count), 10);
   const chartHeight = 160;
 
   return (
@@ -195,9 +196,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onNavigate, onLo
           {/* SVG Visual Chart */}
           <div className="w-full pt-4">
             <div className="h-44 w-full flex items-end gap-1.5 sm:gap-3 border-b border-white/10 pb-2">
-              {stats.downloadsOverTime.map((pt, idx) => {
+              {(stats.downloadsOverTime || []).map((pt, idx) => {
                 const barHeight = Math.max(12, (pt.count / maxDownloadInDay) * chartHeight);
-                const isLatest = idx === stats.downloadsOverTime.length - 1;
+                const isLatest = idx === (stats.downloadsOverTime || []).length - 1;
                 return (
                   <div
                     key={pt.date}
@@ -241,7 +242,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onNavigate, onLo
             </h3>
 
             <div className="space-y-4">
-              {stats.categoryDistribution.map((cat) => {
+              {(stats.categoryDistribution || []).map((cat) => {
                 const pct = stats.totalFiles > 0 ? Math.round((cat.count / stats.totalFiles) * 100) : 0;
                 return (
                   <div key={cat.slug} className="space-y-1.5">
@@ -291,7 +292,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onNavigate, onLo
           </div>
 
           <div className="space-y-3">
-            {stats.popularFiles.map((file, idx) => (
+            {(stats.popularFiles || []).map((file, idx) => (
               <div
                 key={file.id}
                 className="p-3.5 rounded-2xl bg-black/40 border border-white/5 flex items-center justify-between"
@@ -329,7 +330,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onNavigate, onLo
           </div>
 
           <div className="space-y-3 max-h-80 overflow-y-auto pr-1 scrollbar-thin">
-            {stats.recentActivity.map((act, i) => (
+            {(stats.recentActivity || []).map((act, i) => (
               <div
                 key={i}
                 className="p-3 rounded-2xl bg-black/40 border border-white/5 flex items-center justify-between text-xs"

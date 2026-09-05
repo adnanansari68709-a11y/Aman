@@ -25,16 +25,31 @@ export class JsonDatabase {
   private data: DatabaseSchema;
 
   constructor(customPath?: string) {
-    this.dbPath = customPath || path.join(process.cwd(), 'data', 'db.json');
+    const isServerless = Boolean(
+      process.env.NETLIFY || 
+      process.env.AWS_LAMBDA_FUNCTION_NAME || 
+      process.env.LAMBDA_TASK_ROOT
+    );
+    if (customPath) {
+      this.dbPath = customPath;
+    } else if (isServerless) {
+      this.dbPath = path.join('/tmp', 'db.json');
+    } else {
+      this.dbPath = path.join(process.cwd(), 'data', 'db.json');
+    }
     this.ensureDataDir();
     this.data = this.loadDatabase();
     this.initializeDefaults();
   }
 
   private ensureDataDir() {
-    const dir = path.dirname(this.dbPath);
-    if (!fs.existsSync(dir)) {
-      fs.mkdirSync(dir, { recursive: true });
+    try {
+      const dir = path.dirname(this.dbPath);
+      if (!fs.existsSync(dir)) {
+        fs.mkdirSync(dir, { recursive: true });
+      }
+    } catch (err) {
+      console.warn('Notice: could not ensure data directory:', err);
     }
   }
 
@@ -47,6 +62,34 @@ export class JsonDatabase {
         console.error('Failed to parse database file, starting fresh backup:', err);
       }
     }
+
+    // Check project data/db.json as seed fallback
+    const seedPaths = [
+      path.join(process.cwd(), 'data', 'db.json'),
+      path.join(__dirname, '..', '..', 'data', 'db.json'),
+      path.join(__dirname, 'data', 'db.json')
+    ];
+
+    for (const p of seedPaths) {
+      if (fs.existsSync(p)) {
+        try {
+          const raw = fs.readFileSync(p, 'utf-8');
+          const parsed = JSON.parse(raw);
+          // In serverless, populate /tmp/db.json
+          try {
+            if (this.dbPath !== p) {
+              fs.writeFileSync(this.dbPath, raw, 'utf-8');
+            }
+          } catch (writeErr) {
+            // ignore
+          }
+          return parsed;
+        } catch (err) {
+          console.error('Failed to parse seed db:', err);
+        }
+      }
+    }
+
     return {
       admins: [],
       categories: [],
@@ -62,7 +105,7 @@ export class JsonDatabase {
       fs.writeFileSync(tempPath, JSON.stringify(this.data, null, 2), 'utf-8');
       fs.renameSync(tempPath, this.dbPath);
     } catch (err) {
-      console.error('Error saving database:', err);
+      console.warn('Notice: database save skipped (read-only filesystem):', err);
     }
   }
 
@@ -535,8 +578,18 @@ This architectural briefing outlines the zero-latency, cryptographically verifie
   ): { success: boolean; error?: string; admin?: AdminUser } {
     const configuredEmail = (process.env.ADMIN_EMAIL || '').trim();
     const configuredPassword = process.env.ADMIN_PASSWORD || '';
+    const storedAdmin = this.data.admins[0];
 
-    if (!configuredEmail || !configuredPassword) {
+    const targetEmail = configuredEmail || storedAdmin?.email || '';
+
+    if (!targetEmail) {
+      return {
+        success: false,
+        error: 'Administrator email is not configured in the server environment.'
+      };
+    }
+
+    if (!configuredPassword && !storedAdmin?.passwordHash) {
       return {
         success: false,
         error: 'Administrator credentials are not configured in the server environment.'
@@ -544,11 +597,11 @@ This architectural briefing outlines the zero-latency, cryptographically verifie
     }
 
     const cleanSubmittedEmail = (submittedEmail || '').trim().toLowerCase();
-    const cleanConfiguredEmail = configuredEmail.toLowerCase();
+    const cleanTargetEmail = targetEmail.toLowerCase();
 
     // Constant-time comparison for email
     const bufEmailA = Buffer.from(cleanSubmittedEmail, 'utf8');
-    const bufEmailB = Buffer.from(cleanConfiguredEmail, 'utf8');
+    const bufEmailB = Buffer.from(cleanTargetEmail, 'utf8');
     let emailValid = false;
     if (bufEmailA.length === bufEmailB.length) {
       emailValid = crypto.timingSafeEqual(bufEmailA, bufEmailB);
@@ -559,23 +612,31 @@ This architectural briefing outlines the zero-latency, cryptographically verifie
 
     // Secure password comparison
     let passwordValid = false;
-    if (
-      configuredPassword.startsWith('$2a$') ||
-      configuredPassword.startsWith('$2b$') ||
-      configuredPassword.startsWith('$2y$')
-    ) {
-      try {
-        passwordValid = bcrypt.compareSync(submittedPass, configuredPassword);
-      } catch {
-        passwordValid = false;
-      }
-    } else {
-      const bufPassA = Buffer.from(String(submittedPass), 'utf8');
-      const bufPassB = Buffer.from(String(configuredPassword), 'utf8');
-      if (bufPassA.length === bufPassB.length) {
-        passwordValid = crypto.timingSafeEqual(bufPassA, bufPassB);
+    if (configuredPassword) {
+      if (
+        configuredPassword.startsWith('$2a$') ||
+        configuredPassword.startsWith('$2b$') ||
+        configuredPassword.startsWith('$2y$')
+      ) {
+        try {
+          passwordValid = bcrypt.compareSync(submittedPass, configuredPassword);
+        } catch {
+          passwordValid = false;
+        }
       } else {
-        crypto.timingSafeEqual(bufPassA, bufPassA);
+        const bufPassA = Buffer.from(String(submittedPass), 'utf8');
+        const bufPassB = Buffer.from(String(configuredPassword), 'utf8');
+        if (bufPassA.length === bufPassB.length) {
+          passwordValid = crypto.timingSafeEqual(bufPassA, bufPassB);
+        } else {
+          crypto.timingSafeEqual(bufPassA, bufPassA);
+          passwordValid = false;
+        }
+      }
+    } else if (storedAdmin?.passwordHash) {
+      try {
+        passwordValid = bcrypt.compareSync(submittedPass, storedAdmin.passwordHash);
+      } catch {
         passwordValid = false;
       }
     }
@@ -588,13 +649,13 @@ This architectural briefing outlines the zero-latency, cryptographically verifie
     }
 
     // Synchronize single-owner admin record in database
-    const adminRecord = this.ensureAdminInSync(configuredEmail);
+    const adminRecord = this.ensureAdminInSync(targetEmail);
 
     return {
       success: true,
       admin: {
         id: adminRecord.id,
-        email: configuredEmail,
+        email: adminRecord.email,
         name: adminRecord.name,
         lastLogin: adminRecord.lastLogin
       }

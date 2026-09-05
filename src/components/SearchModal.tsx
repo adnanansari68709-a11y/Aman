@@ -41,9 +41,10 @@ export const SearchModal: React.FC<SearchModalProps> = ({
       setLoading(true);
       try {
         const data = await api.getFiles({ search: query.trim(), limit: 6 });
-        setResults(data.files);
+        setResults(data?.files || []);
       } catch (err) {
         console.error('Search query error:', err);
+        setResults([]);
       } finally {
         setLoading(false);
       }
@@ -101,12 +102,12 @@ export const SearchModal: React.FC<SearchModalProps> = ({
 
         {/* Results List */}
         <div className="max-h-96 overflow-y-auto p-4 space-y-2">
-          {results.length > 0 ? (
+          {(results || []).length > 0 ? (
             <>
               <div className="text-[10px] uppercase tracking-wider text-zinc-500 font-semibold px-3 py-1">
-                Top Matches ({results.length})
+                Top Matches ({(results || []).length})
               </div>
-              {results.map((file) => (
+              {(results || []).map((file) => (
                 <div
                   key={file.id}
                   onClick={() => {

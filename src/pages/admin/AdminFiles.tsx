@@ -65,8 +65,8 @@ export const AdminFiles: React.FC<AdminFilesProps> = ({ onNavigate }) => {
         api.getAdminFiles({ limit: 100, category: selectedCategory || undefined, search: search.trim() || undefined }),
         api.getAdminCategories()
       ]);
-      setFiles(filesRes.files);
-      setCategories(catsRes);
+      setFiles(filesRes?.files || []);
+      setCategories(Array.isArray(catsRes) ? catsRes : []);
     } catch (err) {
       console.error('Failed to load files:', err);
     } finally {
@@ -246,7 +246,7 @@ export const AdminFiles: React.FC<AdminFilesProps> = ({ onNavigate }) => {
           <Loader2 className="w-8 h-8 animate-spin text-[#D4AF37] mb-3" />
           <span className="text-sm font-light">Loading file ledger...</span>
         </div>
-      ) : files.length === 0 ? (
+      ) : (files || []).length === 0 ? (
         <div className="py-16 text-center bg-white/5 border border-white/10 rounded-3xl p-8">
           <p className="text-zinc-400 text-sm mb-4">No resources found matching filter criteria.</p>
           <button
@@ -275,7 +275,7 @@ export const AdminFiles: React.FC<AdminFilesProps> = ({ onNavigate }) => {
                 </tr>
               </thead>
               <tbody className="divide-y divide-white/5">
-                {files.map((file) => {
+                {(files || []).map((file) => {
                   const ext = getFileExtension(file.fileName);
                   return (
                     <tr

@@ -59,11 +59,11 @@ export const Home: React.FC<HomeProps> = ({
           api.getPublicStats()
         ]);
 
-        setFeaturedFiles(featRes.files);
-        setLatestFiles(latestRes.files);
-        setTrendingFiles(trendRes.files);
-        setCategories(catRes);
-        setStats(statsRes);
+        setFeaturedFiles(featRes?.files || []);
+        setLatestFiles(latestRes?.files || []);
+        setTrendingFiles(trendRes?.files || []);
+        setCategories(Array.isArray(catRes) ? catRes : []);
+        setStats(statsRes || { totalFiles: 0, totalDownloads: 0, totalCategories: 0, recentlyUpdatedCount: 0 });
       } catch (err) {
         console.error('Failed to load home data:', err);
       } finally {
@@ -186,7 +186,7 @@ export const Home: React.FC<HomeProps> = ({
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-          {featuredFiles.map((file) => (
+          {(featuredFiles || []).map((file) => (
             <FileCard
               key={file.id}
               file={file}
@@ -255,7 +255,7 @@ export const Home: React.FC<HomeProps> = ({
               </button>
             </div>
             <div className="space-y-3">
-              {latestFiles.slice(0, 3).map((file) => (
+              {(latestFiles || []).slice(0, 3).map((file) => (
                 <div
                   key={file.id}
                   onClick={() => onOpenDetails(file.slug)}
@@ -294,7 +294,7 @@ export const Home: React.FC<HomeProps> = ({
               </button>
             </div>
             <div className="space-y-3">
-              {trendingFiles.slice(0, 3).map((file) => (
+              {(trendingFiles || []).slice(0, 3).map((file) => (
                 <div
                   key={file.id}
                   onClick={() => onOpenDetails(file.slug)}
