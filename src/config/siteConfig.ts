@@ -27,7 +27,7 @@ export const siteConfig: SiteConfig = {
   siteName: "VELORA",
   tagline: "Premium Digital Resources. One Powerful Library.",
   description: "Your premium destination for curated digital resources, high-grade developer toolkits, design templates, and verified files.",
-  siteUrl: process.env.APP_URL || "https://velora.digital",
+  siteUrl: process.env.APP_URL || "https://velora-digital-archive.netlify.app",
   contactEmail: "concierge@velora.digital",
   defaultCategory: "documents",
   maxFileSizeMB: 50,

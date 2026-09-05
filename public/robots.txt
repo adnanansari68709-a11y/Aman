@@ -1,0 +1,8 @@
+User-agent: *
+Allow: /
+Disallow: /admin
+Disallow: /admin/
+Disallow: /api/
+Disallow: /.netlify/
+
+Sitemap: https://velora-digital-archive.netlify.app/sitemap.xml

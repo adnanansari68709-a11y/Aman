@@ -73,8 +73,8 @@ export function createApiApp() {
 
   // SEO endpoints
   router.get('/robots.txt', (req: Request, res: Response) => {
-    const sitemapUrl = `${siteConfig.siteUrl}/sitemap.xml`;
-    const robotsTxt = `User-agent: *\nAllow: /\nDisallow: /admin\nDisallow: /api/admin/\n\nSitemap: ${sitemapUrl}\n`;
+    const sitemapUrl = `${siteConfig.siteUrl.replace(/\/$/, '')}/sitemap.xml`;
+    const robotsTxt = `User-agent: *\nAllow: /\nDisallow: /admin\nDisallow: /admin/\nDisallow: /api/\nDisallow: /.netlify/\n\nSitemap: ${sitemapUrl}\n`;
     res.type('text/plain').send(robotsTxt);
   });
 
@@ -82,25 +82,37 @@ export function createApiApp() {
     const { files } = db.getFiles({ publishedOnly: true, limit: 1000 });
     const categories = db.getAllCategories(false);
     const baseUrl = siteConfig.siteUrl.replace(/\/$/, '');
+    const today = new Date().toISOString().split('T')[0];
 
-    const staticPages = ['', '/library', '/about', '/contact', '/privacy', '/terms'];
+    const staticPages = [
+      { path: '', changefreq: 'daily', priority: '1.0' },
+      { path: '/library', changefreq: 'daily', priority: '0.9' },
+      { path: '/categories', changefreq: 'weekly', priority: '0.8' },
+      { path: '/about', changefreq: 'monthly', priority: '0.6' },
+      { path: '/contact', changefreq: 'monthly', priority: '0.5' },
+      { path: '/privacy', changefreq: 'monthly', priority: '0.3' },
+      { path: '/terms', changefreq: 'monthly', priority: '0.3' }
+    ];
 
     let xml = `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n`;
 
     staticPages.forEach(p => {
-      xml += `  <url>\n    <loc>${baseUrl}${p}</loc>\n    <changefreq>daily</changefreq>\n    <priority>${p === '' ? '1.0' : '0.8'}</priority>\n  </url>\n`;
+      xml += `  <url>\n    <loc>${baseUrl}${p.path}</loc>\n    <lastmod>${today}</lastmod>\n    <changefreq>${p.changefreq}</changefreq>\n    <priority>${p.priority}</priority>\n  </url>\n`;
     });
 
     categories.forEach(c => {
-      xml += `  <url>\n    <loc>${baseUrl}/category/${c.slug}</loc>\n    <changefreq>weekly</changefreq>\n    <priority>0.7</priority>\n  </url>\n`;
+      const lastmod = c.updatedAt ? c.updatedAt.split('T')[0] : (c.createdAt ? c.createdAt.split('T')[0] : today);
+      xml += `  <url>\n    <loc>${baseUrl}/category/${encodeURIComponent(c.slug)}</loc>\n    <lastmod>${lastmod}</lastmod>\n    <changefreq>weekly</changefreq>\n    <priority>0.8</priority>\n  </url>\n`;
     });
 
     files.forEach(f => {
-      xml += `  <url>\n    <loc>${baseUrl}/file/${f.slug}</loc>\n    <lastmod>${f.updatedAt.split('T')[0]}</lastmod>\n    <changefreq>weekly</changefreq>\n    <priority>0.9</priority>\n  </url>\n`;
+      const lastmod = f.updatedAt ? f.updatedAt.split('T')[0] : (f.createdAt ? f.createdAt.split('T')[0] : today);
+      xml += `  <url>\n    <loc>${baseUrl}/file/${encodeURIComponent(f.slug)}</loc>\n    <lastmod>${lastmod}</lastmod>\n    <changefreq>weekly</changefreq>\n    <priority>0.8</priority>\n  </url>\n`;
     });
 
-    xml += `</urlset>`;
-    res.type('application/xml').send(xml);
+    xml += `</urlset>\n`;
+    res.header('Content-Type', 'application/xml; charset=utf-8');
+    res.send(xml);
   });
 
   // ==========================================

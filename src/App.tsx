@@ -127,8 +127,23 @@ export function App() {
     if (currentPath === '/categories') {
       return (
         <CategoriesPage
-          onSelectCategory={(slug) => navigate(`/library?category=${slug}`)}
+          onSelectCategory={(slug) => navigate(`/category/${slug}`)}
           onNavigate={navigate}
+        />
+      );
+    }
+
+    // Category archive route: /category/:slug
+    if (currentPath.startsWith('/category/')) {
+      const catSlug = currentPath.replace('/category/', '').split('?')[0];
+      return (
+        <Library
+          initialCategory={catSlug}
+          onOpenDetails={(slug) => navigate(`/file/${slug}`)}
+          onCategorySelect={(slug) => {
+            const newUrl = slug ? `/category/${slug}` : '/library';
+            window.history.replaceState({}, '', newUrl);
+          }}
         />
       );
     }
