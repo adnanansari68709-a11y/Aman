@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Search, Menu, X, Shield, Sparkles, FolderTree } from 'lucide-react';
+import { Search, Menu, X, ArrowRight, User, Shield } from 'lucide-react';
 import { AdminUser } from '../types';
 
 interface HeaderProps {
@@ -21,8 +21,9 @@ export const Header: React.FC<HeaderProps> = ({
     { label: 'Home', route: '/' },
     { label: 'Library', route: '/library' },
     { label: 'Categories', route: '/categories' },
-    { label: 'About', route: '/about' },
-    { label: 'Contact', route: '/contact' }
+    { label: 'Collections', route: '/library?collection=featured' },
+    { label: 'Resources', route: '/library' },
+    { label: 'About', route: '/about' }
   ];
 
   const handleNav = (route: string) => {
@@ -31,107 +32,137 @@ export const Header: React.FC<HeaderProps> = ({
   };
 
   return (
-    <header className="sticky top-0 z-40 w-full border-b border-[#D4AF37]/20 bg-black/70 backdrop-blur-xl">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-20 flex items-center justify-between">
-        {/* Brand Logo */}
+    <header className="sticky top-0 z-50 w-full border-b border-white/[0.08] bg-[#060709]/90 backdrop-blur-xl transition-all">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 sm:h-18 flex items-center justify-between gap-3 sm:gap-4">
+        
+        {/* Brand: Velora V logo + VELORA DIGITAL ARCHIVE */}
         <button
           id="nav-logo-btn"
           onClick={() => handleNav('/')}
-          className="flex items-center gap-3 group text-left transition-transform active:scale-95"
+          className="flex items-center gap-2.5 sm:gap-3 group text-left transition-transform active:scale-95 focus:outline-none flex-shrink-0"
         >
-          <div className="w-10 h-10 bg-gradient-to-br from-[#D4AF37] to-[#8A6D3B] flex items-center justify-center rounded-xl shadow-[0_0_20px_rgba(212,175,55,0.35)] group-hover:shadow-[0_0_25px_rgba(212,175,55,0.5)] transition-all">
-            <span className="text-black font-black text-2xl tracking-tighter">V</span>
+          <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl bg-gradient-to-br from-[#f0d892] via-[#d4af37] to-[#8a6d3b] p-[1px] shadow-[0_0_15px_rgba(212,175,55,0.3)] group-hover:shadow-[0_0_25px_rgba(212,175,55,0.5)] transition-all">
+            <div className="w-full h-full bg-[#08090d] rounded-[11px] flex items-center justify-center">
+              <span className="font-brand text-transparent bg-clip-text bg-gradient-to-b from-[#fff5d6] via-[#d4af37] to-[#b38b2d] font-bold text-base sm:text-lg tracking-tighter">
+                V
+              </span>
+            </div>
           </div>
           <div className="flex flex-col">
-            <span className="text-xl font-extrabold tracking-widest text-white leading-none group-hover:text-[#F3E5AB] transition-colors">
+            <span className="text-sm sm:text-base font-brand tracking-[0.25em] text-white leading-tight group-hover:text-[#f3e5ab] transition-colors">
               VELORA
             </span>
-            <span className="text-[9px] uppercase tracking-[0.3em] text-[#D4AF37] font-semibold mt-1">
+            <span className="text-[8px] sm:text-[9px] uppercase tracking-[0.3em] text-[#d4af37] font-medium opacity-90">
               Digital Archive
             </span>
           </div>
         </button>
 
-        {/* Desktop Navigation */}
-        <nav className="hidden md:flex items-center gap-8 text-sm font-medium tracking-wide">
+        {/* Desktop Navigation Links: Home, Library, Categories, Collections, Resources, About */}
+        <nav className="hidden lg:flex items-center gap-5 xl:gap-7 text-xs font-medium tracking-wide">
           {navLinks.map((item) => {
-            const isActive = currentRoute === item.route;
+            const isActive =
+              item.route === '/'
+                ? currentRoute === '/'
+                : item.route === '/library?collection=featured'
+                ? currentRoute.includes('collection=featured')
+                : currentRoute.startsWith(item.route);
+
             return (
               <button
-                key={item.route}
+                key={item.label}
                 id={`nav-link-${item.label.toLowerCase()}`}
                 onClick={() => handleNav(item.route)}
-                className={`transition-colors relative py-1 ${
+                className={`transition-all py-1 font-light tracking-wider hover:text-[#d4af37] ${
                   isActive
-                    ? 'text-[#D4AF37] border-b-2 border-[#D4AF37]'
-                    : 'text-zinc-300 hover:text-[#D4AF37]'
+                    ? 'text-[#d4af37] font-medium'
+                    : 'text-zinc-300'
                 }`}
               >
                 {item.label}
               </button>
             );
           })}
+        </nav>
 
-          <div className="h-4 w-[1px] bg-white/20 mx-1"></div>
-
-          {/* Quick Search Button */}
+        {/* Actions on Desktop: Search, Sign In, Get Started */}
+        <div className="hidden md:flex items-center gap-2.5 lg:gap-3.5 flex-shrink-0">
+          {/* Search Trigger */}
           <button
             id="header-search-btn"
             onClick={onOpenSearch}
-            className="flex items-center gap-2 text-zinc-400 hover:text-white px-3 py-1.5 rounded-xl hover:bg-white/5 transition-all text-xs"
-            title="Search resources (Ctrl+K)"
+            className="flex items-center gap-2 text-zinc-400 hover:text-white px-2.5 py-1.5 rounded-xl bg-white/[0.04] hover:bg-white/[0.08] border border-white/[0.08] transition-all text-xs"
+            title="Search archive (Press /)"
           >
-            <Search className="w-4 h-4 text-[#D4AF37]" />
-            <span className="hidden lg:inline">Search archive...</span>
-            <kbd className="hidden lg:inline-block px-1.5 py-0.5 text-[10px] bg-white/10 border border-white/15 rounded text-zinc-400">
+            <Search className="w-3.5 h-3.5 text-[#d4af37]" />
+            <span className="hidden xl:inline text-zinc-300 text-xs">Search...</span>
+            <kbd className="hidden xl:inline-block px-1.5 py-0.5 text-[9px] bg-white/10 rounded text-zinc-400 font-mono">
               /
             </kbd>
           </button>
 
-          {/* Admin Portal Entry */}
+          {/* Sign In Button */}
           <button
-            id="nav-admin-btn"
+            id="nav-signin-btn"
             onClick={() => handleNav(adminUser ? '/admin' : '/admin/login')}
-            className="flex items-center gap-2.5 bg-[#D4AF37]/10 border border-[#D4AF37]/30 px-4 py-2 rounded-full text-[#D4AF37] hover:bg-[#D4AF37]/20 transition-all active:scale-95 text-xs font-semibold tracking-wider uppercase"
+            className="flex items-center gap-1.5 text-xs text-zinc-300 hover:text-white px-2.5 py-1.5 transition-colors font-medium"
           >
-            <div className={`w-2 h-2 rounded-full ${adminUser ? 'bg-emerald-400' : 'bg-[#D4AF37]'} animate-pulse`}></div>
-            <span>{adminUser ? 'Dashboard' : 'Admin Portal'}</span>
-            <Shield className="w-3.5 h-3.5 opacity-80" />
+            {adminUser ? (
+              <>
+                <Shield className="w-3.5 h-3.5 text-emerald-400" />
+                <span className="text-emerald-400">Admin</span>
+              </>
+            ) : (
+              <>
+                <User className="w-3.5 h-3.5 text-zinc-400" />
+                <span>Sign In</span>
+              </>
+            )}
           </button>
-        </nav>
+
+          {/* Get Started Button */}
+          <button
+            id="nav-get-started-btn"
+            onClick={() => handleNav(adminUser ? '/admin/upload' : '/library')}
+            className="px-4 py-2 rounded-xl bg-gradient-to-r from-[#d4af37] via-[#e5c158] to-[#c29831] text-black text-xs font-semibold uppercase tracking-wider hover:brightness-110 active:scale-95 transition-all shadow-[0_0_15px_rgba(212,175,55,0.25)] flex items-center gap-1.5"
+          >
+            <span>{adminUser ? 'Ingest Asset' : 'Get Started'}</span>
+            <ArrowRight className="w-3.5 h-3.5" />
+          </button>
+        </div>
 
         {/* Mobile controls */}
-        <div className="flex md:hidden items-center gap-3">
+        <div className="flex md:hidden items-center gap-2">
           <button
             id="mobile-search-btn"
             onClick={onOpenSearch}
-            className="p-2.5 rounded-xl bg-white/5 border border-white/10 text-[#D4AF37]"
+            className="p-2 rounded-xl bg-white/5 border border-white/10 text-[#d4af37]"
             aria-label="Search"
           >
-            <Search className="w-5 h-5" />
+            <Search className="w-4 h-4" />
           </button>
           <button
             id="mobile-menu-toggle"
             onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-            className="p-2.5 rounded-xl bg-white/5 border border-white/10 text-zinc-300 hover:text-white"
+            className="p-2 rounded-xl bg-white/5 border border-white/10 text-zinc-300 hover:text-white"
             aria-label="Toggle navigation menu"
           >
-            {mobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
+            {mobileMenuOpen ? <X className="w-4 h-4" /> : <Menu className="w-4 h-4" />}
           </button>
         </div>
       </div>
 
       {/* Mobile Drawer */}
       {mobileMenuOpen && (
-        <div className="md:hidden border-b border-white/10 bg-[#070709] px-6 py-6 space-y-4">
-          <div className="flex flex-col space-y-3">
+        <div className="md:hidden border-b border-white/10 bg-[#07080c] px-5 py-5 space-y-4">
+          <div className="flex flex-col space-y-2">
             {navLinks.map((item) => (
               <button
-                key={item.route}
+                key={item.label}
                 onClick={() => handleNav(item.route)}
-                className={`text-left text-base font-medium py-2 px-3 rounded-lg transition-colors ${
+                className={`text-left text-xs uppercase tracking-wider py-2 px-3 rounded-lg transition-colors ${
                   currentRoute === item.route
-                    ? 'bg-[#D4AF37]/15 text-[#D4AF37] font-semibold'
+                    ? 'bg-[#d4af37]/15 text-[#d4af37] font-semibold'
                     : 'text-zinc-300 hover:bg-white/5'
                 }`}
               >
@@ -140,13 +171,20 @@ export const Header: React.FC<HeaderProps> = ({
             ))}
           </div>
 
-          <div className="pt-4 border-t border-white/10 flex flex-col gap-3">
+          <div className="pt-3 border-t border-white/10 flex flex-col gap-2">
             <button
               onClick={() => handleNav(adminUser ? '/admin' : '/admin/login')}
-              className="w-full flex items-center justify-center gap-2.5 bg-[#D4AF37]/15 border border-[#D4AF37]/40 py-3 rounded-xl text-[#D4AF37] text-sm font-semibold tracking-wider uppercase"
+              className="w-full flex items-center justify-center gap-2 bg-white/5 border border-white/10 py-2.5 rounded-xl text-zinc-200 text-xs font-semibold tracking-wider uppercase"
             >
-              <div className={`w-2 h-2 rounded-full ${adminUser ? 'bg-emerald-400' : 'bg-[#D4AF37]'} animate-pulse`}></div>
-              <span>{adminUser ? 'Admin Dashboard (Active)' : 'Admin Portal Login'}</span>
+              <User className="w-3.5 h-3.5 text-[#d4af37]" />
+              <span>{adminUser ? 'Dashboard' : 'Sign In'}</span>
+            </button>
+            <button
+              onClick={() => handleNav(adminUser ? '/admin/upload' : '/library')}
+              className="w-full flex items-center justify-center gap-2 bg-gradient-to-r from-[#d4af37] to-[#caa446] text-black py-2.5 rounded-xl text-xs font-bold tracking-wider uppercase shadow-[0_0_15px_rgba(212,175,55,0.25)]"
+            >
+              <span>{adminUser ? 'Ingest Asset' : 'Get Started'}</span>
+              <ArrowRight className="w-3.5 h-3.5" />
             </button>
           </div>
         </div>

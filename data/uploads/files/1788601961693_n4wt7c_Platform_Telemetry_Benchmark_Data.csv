@@ -1,0 +1,4 @@
+timestamp,node_id,throughput_mbps,latency_ms,cache_hit_ratio,uptime
+2026-09-01T00:00:00Z,node-sg-01,1048.5,1.2,0.994,1.0
+2026-09-02T00:00:00Z,node-sg-01,1092.1,1.1,0.996,1.0
+2026-09-03T00:00:00Z,node-sg-01,1145.8,0.9,0.998,1.0

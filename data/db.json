@@ -153,7 +153,7 @@
       "published": true,
       "id": "file_1788630820559_0i1y13",
       "slug": "velora-production-keynote-2026",
-      "downloadCount": 0,
+      "downloadCount": 5,
       "createdAt": "2026-09-05T17:53:40.559Z",
       "updatedAt": "2026-09-05T17:53:40.559Z"
     },
@@ -196,7 +196,7 @@
         "Enterprise",
         "Cloud"
       ],
-      "downloadCount": 1483,
+      "downloadCount": 1484,
       "featured": true,
       "published": true,
       "createdAt": "2026-08-24T09:52:41.644Z",
@@ -5673,6 +5673,54 @@
       "ip": "127.0.0.1",
       "userAgent": "curl/7.88.1",
       "timestamp": "2026-09-05T10:09:18.045Z"
+    },
+    {
+      "id": "dl_1788690113619_d5nkgt",
+      "fileId": "file_1788630820559_0i1y13",
+      "fileTitle": "Velora Production Keynote 2026",
+      "ip": "127.0.0.1",
+      "userAgent": "node",
+      "timestamp": "2026-09-06T10:21:53.619Z"
+    },
+    {
+      "id": "dl_1788690123206_2zja3u",
+      "fileId": "file_1788630820559_0i1y13",
+      "fileTitle": "Velora Production Keynote 2026",
+      "ip": "127.0.0.1",
+      "userAgent": "curl/7.88.1",
+      "timestamp": "2026-09-06T10:22:03.206Z"
+    },
+    {
+      "id": "dl_1788690190057_08igp8",
+      "fileId": "file_1788630820559_0i1y13",
+      "fileTitle": "Velora Production Keynote 2026",
+      "ip": "127.0.0.1",
+      "userAgent": "curl/7.88.1",
+      "timestamp": "2026-09-06T10:23:10.057Z"
+    },
+    {
+      "id": "dl_1788690202473_dqk7t0",
+      "fileId": "file_1788630820559_0i1y13",
+      "fileTitle": "Velora Production Keynote 2026",
+      "ip": "127.0.0.1",
+      "userAgent": "curl/7.88.1",
+      "timestamp": "2026-09-06T10:23:22.473Z"
+    },
+    {
+      "id": "dl_1788690379667_e5x1kp",
+      "fileId": "file_1788630820559_0i1y13",
+      "fileTitle": "Velora Production Keynote 2026",
+      "ip": "127.0.0.1",
+      "userAgent": "curl/7.88.1",
+      "timestamp": "2026-09-06T10:26:19.667Z"
+    },
+    {
+      "id": "dl_1788690992716_88sfa1",
+      "fileId": "file_blueprint_01",
+      "fileTitle": "VELORA Enterprise Architecture Blueprint 2026",
+      "ip": "127.0.0.1",
+      "userAgent": "curl/7.88.1",
+      "timestamp": "2026-09-06T10:36:32.716Z"
     }
   ],
   "settings": {}

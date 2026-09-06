@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { Download, ExternalLink, Loader2, Sparkles, CheckCircle2 } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Download, ExternalLink, Loader2, Sparkles, CheckCircle2, Bookmark, Star, Eye } from 'lucide-react';
 import { FileResource } from '../types';
 import { formatBytes, formatDownloadCount, getFileExtension } from '../utils/formatters';
 import { api } from '../services/api';
@@ -18,6 +18,37 @@ export const FileCard: React.FC<FileCardProps> = ({
   const [downloading, setDownloading] = useState(false);
   const [downloadSuccess, setDownloadSuccess] = useState(false);
   const [currentDownloads, setCurrentDownloads] = useState(file.downloadCount);
+  const [isBookmarked, setIsBookmarked] = useState(false);
+
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem('velora_bookmarks');
+      if (saved) {
+        const list: string[] = JSON.parse(saved);
+        setIsBookmarked(list.includes(file.id));
+      }
+    } catch {
+      // ignore
+    }
+  }, [file.id]);
+
+  const toggleBookmark = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    try {
+      const saved = localStorage.getItem('velora_bookmarks');
+      let list: string[] = saved ? JSON.parse(saved) : [];
+      if (list.includes(file.id)) {
+        list = list.filter((id) => id !== file.id);
+        setIsBookmarked(false);
+      } else {
+        list.push(file.id);
+        setIsBookmarked(true);
+      }
+      localStorage.setItem('velora_bookmarks', JSON.stringify(list));
+    } catch {
+      // ignore
+    }
+  };
 
   const extension = getFileExtension(file.fileName);
 
@@ -27,8 +58,6 @@ export const FileCard: React.FC<FileCardProps> = ({
 
     setDownloading(true);
     try {
-      // Create a hidden anchor pointing directly to the download endpoint
-      // This validates the file on server, increments downloadCount in database, and streams the payload
       const downloadUrl = api.getDownloadUrl(file.id);
       const link = document.createElement('a');
       link.href = downloadUrl;
@@ -54,86 +83,118 @@ export const FileCard: React.FC<FileCardProps> = ({
     <div
       id={`file-card-${file.id}`}
       onClick={() => onOpenDetails(file.slug)}
-      className="bg-white/5 border border-white/10 p-6 rounded-3xl hover:border-[#D4AF37]/40 transition-all duration-300 group relative overflow-hidden flex flex-col h-full cursor-pointer hover:shadow-[0_10px_30px_rgba(0,0,0,0.5)]"
+      className="bg-[#0b0c11]/85 border border-white/[0.08] hover:border-[#d4af37]/45 rounded-2xl p-4 sm:p-5 transition-all duration-300 group relative flex flex-col h-full cursor-pointer hover:shadow-[0_16px_36px_-10px_rgba(0,0,0,0.8),0_0_24px_-6px_rgba(212,175,55,0.18)] hover:-translate-y-1"
     >
-      {/* Featured Star Badge */}
-      {file.featured && (
-        <div className="absolute top-3 right-3 z-10 flex items-center gap-1 bg-[#D4AF37]/20 border border-[#D4AF37]/40 text-[#D4AF37] text-[9px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full backdrop-blur-md">
-          <Sparkles className="w-2.5 h-2.5" /> Featured
+      {/* Top badges: Bookmark & Featured / Rating */}
+      <div className="flex items-center justify-between gap-2 mb-3">
+        <button
+          onClick={toggleBookmark}
+          className={`p-1.5 rounded-lg border transition-all ${
+            isBookmarked
+              ? 'bg-[#d4af37]/20 border-[#d4af37]/60 text-[#d4af37]'
+              : 'bg-white/[0.04] border-white/10 text-zinc-400 hover:text-[#d4af37] hover:border-[#d4af37]/30'
+          }`}
+          title={isBookmarked ? 'Remove bookmark' : 'Bookmark resource'}
+        >
+          <Bookmark className={`w-3.5 h-3.5 ${isBookmarked ? 'fill-current' : ''}`} />
+        </button>
+
+        <div className="flex items-center gap-1.5">
+          {file.featured && (
+            <span className="inline-flex items-center gap-1 bg-[#d4af37]/15 border border-[#d4af37]/35 text-[#d4af37] text-[9px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full">
+              <Sparkles className="w-2.5 h-2.5" /> Featured
+            </span>
+          )}
+          <span className="inline-flex items-center gap-1 text-[10px] text-zinc-300 font-mono bg-white/[0.05] border border-white/[0.08] px-2 py-0.5 rounded-full">
+            <Star className="w-2.5 h-2.5 text-[#d4af37] fill-[#d4af37]" /> 4.9
+          </span>
         </div>
-      )}
+      </div>
 
       {/* Media / Preview container */}
-      <div className="h-32 bg-black/40 rounded-2xl mb-4 flex items-center justify-center border border-white/5 overflow-hidden relative group-hover:border-[#D4AF37]/30 transition-all">
+      <div className="h-36 sm:h-40 bg-[#07080b] rounded-xl mb-4 flex items-center justify-center border border-white/[0.06] overflow-hidden relative group-hover:border-[#d4af37]/30 transition-all">
         {file.thumbnailUrl ? (
           <img
             src={file.thumbnailUrl}
             alt={file.title}
             loading="lazy"
-            className="w-full h-full object-cover opacity-80 group-hover:opacity-100 group-hover:scale-105 transition-all duration-500"
+            className="w-full h-full object-cover opacity-85 group-hover:opacity-100 group-hover:scale-105 transition-all duration-500"
           />
         ) : (
-          <div className="w-12 h-12 border-2 border-[#D4AF37]/20 rounded-full flex items-center justify-center group-hover:scale-110 group-hover:border-[#D4AF37]/60 transition-transform duration-300">
-            <span className="text-[#D4AF37] text-sm font-bold tracking-wider font-mono">
-              {extension}
+          <div className="flex flex-col items-center gap-2">
+            <div className="w-12 h-12 rounded-xl bg-white/[0.04] border border-[#d4af37]/25 flex items-center justify-center group-hover:scale-110 group-hover:border-[#d4af37]/60 group-hover:bg-[#d4af37]/10 transition-all duration-300">
+              <span className="text-[#d4af37] text-xs font-bold tracking-widest font-mono">
+                {extension || 'BIN'}
+              </span>
+            </div>
+            <span className="text-[10px] text-zinc-500 uppercase tracking-widest font-medium">
+              {file.mimeType?.split('/')[0] || 'Resource'}
             </span>
           </div>
         )}
 
-        {/* Hover overlay hint */}
-        <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
-          <span className="text-xs text-white font-medium flex items-center gap-1">
-            View Details <ExternalLink className="w-3 h-3 text-[#D4AF37]" />
+        {/* Hover quick action overlay */}
+        <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2 backdrop-blur-[2px]">
+          <span className="text-xs text-white font-medium flex items-center gap-1 px-3 py-1.5 rounded-lg bg-[#d4af37] text-black font-semibold shadow-lg">
+            <Eye className="w-3.5 h-3.5 text-black" /> Preview
           </span>
         </div>
       </div>
 
       {/* Meta Top Line */}
-      <div className="flex justify-between items-start mb-2">
-        <span className="text-[10px] uppercase tracking-widest text-[#D4AF37] font-semibold">
+      <div className="flex justify-between items-center mb-1.5">
+        <span className="text-[10px] uppercase tracking-[0.2em] text-[#d4af37] font-semibold">
           {file.categoryName || 'Resource'}
         </span>
-        <span className="text-[10px] text-white/40 font-mono">
+        <span className="text-[10px] text-zinc-400 font-mono">
           {formatBytes(file.fileSize)}
         </span>
       </div>
 
       {/* Resource Title */}
-      <h3 className="text-white font-medium mb-2 text-base leading-snug group-hover:text-[#D4AF37] transition-colors line-clamp-1">
+      <h3 className="text-white font-medium mb-1.5 text-sm sm:text-base leading-snug group-hover:text-[#f3e5ab] transition-colors line-clamp-1">
         {file.title}
       </h3>
 
-      {/* Snippet */}
-      <p className="text-[#A0A0A0] text-xs font-light leading-relaxed mb-4 line-clamp-2">
+      {/* Description */}
+      <p className="text-zinc-400 text-xs font-light leading-relaxed mb-4 line-clamp-2">
         {file.description || 'Verified cryptographic asset stored in the VELORA primary archive.'}
       </p>
 
       {/* Card Footer with Download Counter and Action Button */}
-      <div className="flex items-center justify-between mt-auto pt-4 border-t border-white/5">
-        <div className="flex items-center gap-1.5 text-[10px] text-white/50 font-mono">
-          <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
-          <span>{formatDownloadCount(currentDownloads)} Downloads</span>
+      <div className="flex items-center justify-between mt-auto pt-3 border-t border-white/[0.06]">
+        <div className="flex items-center gap-1.5 text-[11px] text-zinc-400 font-mono">
+          <span className="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
+          <span>{formatDownloadCount(currentDownloads)} downloads</span>
         </div>
 
-        <button
-          id={`download-btn-${file.id}`}
-          onClick={handleDownload}
-          disabled={downloading}
-          className={`p-2.5 rounded-xl border transition-all flex items-center justify-center ${
-            downloadSuccess
-              ? 'bg-emerald-500/20 border-emerald-500/50 text-emerald-400'
-              : 'bg-white/5 border-white/10 hover:bg-[#D4AF37] hover:text-black hover:border-[#D4AF37] text-white'
-          }`}
-          title="Download resource"
-        >
-          {downloading ? (
-            <Loader2 className="w-4 h-4 animate-spin text-[#D4AF37]" />
-          ) : downloadSuccess ? (
-            <CheckCircle2 className="w-4 h-4 text-emerald-400" />
-          ) : (
-            <Download className="w-4 h-4" />
-          )}
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            id={`download-btn-${file.id}`}
+            onClick={handleDownload}
+            disabled={downloading}
+            className={`px-3 py-1.5 rounded-xl border text-xs font-medium transition-all flex items-center gap-1.5 ${
+              downloadSuccess
+                ? 'bg-emerald-500/20 border-emerald-500/50 text-emerald-400'
+                : 'bg-white/[0.05] border-white/10 hover:bg-[#d4af37] hover:text-black hover:border-[#d4af37] text-zinc-200'
+            }`}
+            title="Download verified asset"
+          >
+            {downloading ? (
+              <Loader2 className="w-3.5 h-3.5 animate-spin text-[#d4af37]" />
+            ) : downloadSuccess ? (
+              <>
+                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+                <span>Ready</span>
+              </>
+            ) : (
+              <>
+                <Download className="w-3.5 h-3.5" />
+                <span>Get</span>
+              </>
+            )}
+          </button>
+        </div>
       </div>
     </div>
   );

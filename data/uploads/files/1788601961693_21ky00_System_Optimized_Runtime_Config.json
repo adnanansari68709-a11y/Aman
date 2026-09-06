@@ -1,0 +1,12 @@
+{
+  "archiveVersion": "2.4.0",
+  "encryption": "AES-256-GCM",
+  "compression": "Lossless-Raw",
+  "cdnEdgeNodes": [
+    "sin1",
+    "tyo1",
+    "fra1",
+    "iad1"
+  ],
+  "maxConcurrentStreams": 64
+}
