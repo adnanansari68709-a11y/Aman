@@ -150,11 +150,12 @@ export const FileDetail: React.FC<FileDetailProps> = ({
   }
 
   const ext = getFileExtension(file.fileName).toLowerCase();
-  const isImage = ['jpg', 'jpeg', 'png', 'webp', 'gif', 'svg'].includes(ext);
-  const isAudio = ['mp3', 'wav'].includes(ext);
-  const isVideo = ['mp4', 'webm'].includes(ext);
-  const isPdf = ext === 'pdf';
-  const isText = ['txt', 'csv', 'json', 'md'].includes(ext);
+  const isImage = ['jpg', 'jpeg', 'png', 'webp', 'gif', 'svg'].includes(ext) || (file.mimeType && file.mimeType.startsWith('image/'));
+  const isAudio = ['mp3', 'wav', 'ogg', 'aac'].includes(ext) || (file.mimeType && file.mimeType.startsWith('audio/'));
+  const isVideo = ['mp4', 'webm', 'mov', 'mkv', 'avi'].includes(ext) || (file.mimeType && file.mimeType.startsWith('video/'));
+  const isPdf = ext === 'pdf' || file.mimeType === 'application/pdf';
+  const isText = ['txt', 'csv', 'json', 'md'].includes(ext) || (file.mimeType && file.mimeType.startsWith('text/'));
+  const thumb = file.thumbnailUrl || (file as any).thumbnail;
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10 w-full">
@@ -212,9 +213,11 @@ export const FileDetail: React.FC<FileDetailProps> = ({
               ) : isVideo ? (
                 <video
                   controls
+                  playsInline
+                  preload="metadata"
                   src={api.getPreviewUrl(file.id)}
-                  className="w-full max-h-[440px] rounded-xl"
-                  poster={file.thumbnailUrl || undefined}
+                  className="w-full max-h-[440px] rounded-xl bg-black"
+                  poster={thumb || undefined}
                 >
                   Your browser does not support video playback.
                 </video>

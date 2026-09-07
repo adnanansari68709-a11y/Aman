@@ -230,18 +230,24 @@ export const AdminUpload: React.FC<AdminUploadProps> = ({ onNavigate, onUploaded
             &quot;{createdResource.title}&quot; has been verified, stored on disk, and registered in the database.
           </p>
 
-          <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
+          <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
+            <button
+              onClick={() => onNavigate('/')}
+              className="w-full sm:w-auto px-6 py-3 bg-[#D4AF37] text-black text-xs font-bold uppercase tracking-wider rounded-xl hover:bg-[#E5C158] transition-all shadow-lg"
+            >
+              View on Home Page
+            </button>
             <button
               onClick={() => onNavigate(`/file/${createdResource.slug}`)}
-              className="w-full sm:w-auto px-6 py-3 bg-[#D4AF37] text-black text-xs font-bold uppercase tracking-wider rounded-xl hover:bg-[#E5C158] transition-all"
+              className="w-full sm:w-auto px-6 py-3 bg-white/10 text-white text-xs font-semibold uppercase tracking-wider rounded-xl hover:bg-white/20 transition-all"
             >
-              View Public Resource Page
+              View Details Page
             </button>
             <button
               onClick={resetForm}
-              className="w-full sm:w-auto px-6 py-3 bg-white/5 border border-white/10 text-white text-xs font-semibold uppercase tracking-wider rounded-xl hover:bg-white/10 transition-all"
+              className="w-full sm:w-auto px-6 py-3 bg-white/5 border border-white/10 text-zinc-300 text-xs font-semibold uppercase tracking-wider rounded-xl hover:bg-white/10 transition-all"
             >
-              Ingest Another File
+              Upload Another
             </button>
           </div>
         </div>

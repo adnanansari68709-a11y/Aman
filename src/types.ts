@@ -16,19 +16,24 @@ export interface FileResource {
   slug: string;
   description: string;
   categoryId: string;
+  category?: string;
   categorySlug?: string;
   categoryName?: string;
   fileUrl: string;
+  storageUrl?: string;
   storagePath: string;
   thumbnailUrl: string;
+  thumbnail?: string;
   fileName: string;
   mimeType: string;
+  type?: string;
   fileSize: number; // in bytes
   version?: string;
   tags: string[];
   downloadCount: number;
   featured: boolean;
   published: boolean;
+  status?: string;
   createdAt: string;
   updatedAt: string;
 }

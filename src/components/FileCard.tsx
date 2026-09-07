@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Download, ExternalLink, Loader2, Sparkles, CheckCircle2, Bookmark, Star, Eye } from 'lucide-react';
+import { Download, ExternalLink, Loader2, Sparkles, CheckCircle2, Bookmark, Star, Eye, Play } from 'lucide-react';
 import { FileResource } from '../types';
 import { formatBytes, formatDownloadCount, getFileExtension } from '../utils/formatters';
 import { api } from '../services/api';
@@ -112,34 +112,49 @@ export const FileCard: React.FC<FileCardProps> = ({
       </div>
 
       {/* Media / Preview container */}
-      <div className="h-36 sm:h-40 bg-[#07080b] rounded-xl mb-4 flex items-center justify-center border border-white/[0.06] overflow-hidden relative group-hover:border-[#d4af37]/30 transition-all">
-        {file.thumbnailUrl ? (
-          <img
-            src={file.thumbnailUrl}
-            alt={file.title}
-            loading="lazy"
-            className="w-full h-full object-cover opacity-85 group-hover:opacity-100 group-hover:scale-105 transition-all duration-500"
-          />
-        ) : (
-          <div className="flex flex-col items-center gap-2">
-            <div className="w-12 h-12 rounded-xl bg-white/[0.04] border border-[#d4af37]/25 flex items-center justify-center group-hover:scale-110 group-hover:border-[#d4af37]/60 group-hover:bg-[#d4af37]/10 transition-all duration-300">
-              <span className="text-[#d4af37] text-xs font-bold tracking-widest font-mono">
-                {extension || 'BIN'}
+      {(() => {
+        const thumb = file.thumbnailUrl || (file as any).thumbnail;
+        const isVideo = (file.mimeType && file.mimeType.startsWith('video/')) || 
+          (file.fileName && /\.(mp4|webm|mov|mkv)$/i.test(file.fileName));
+        const finalThumb = thumb || (isVideo ? 'https://images.unsplash.com/photo-1574717024653-61fd2cf4d44d?q=80&w=800&auto=format&fit=crop' : '');
+
+        return (
+          <div className="h-36 sm:h-40 bg-[#07080b] rounded-xl mb-4 flex items-center justify-center border border-white/[0.06] overflow-hidden relative group-hover:border-[#d4af37]/30 transition-all">
+            {finalThumb ? (
+              <img
+                src={finalThumb}
+                alt={file.title}
+                loading="lazy"
+                className="w-full h-full object-cover opacity-85 group-hover:opacity-100 group-hover:scale-105 transition-all duration-500"
+              />
+            ) : (
+              <div className="flex flex-col items-center gap-2">
+                <div className="w-12 h-12 rounded-xl bg-white/[0.04] border border-[#d4af37]/25 flex items-center justify-center group-hover:scale-110 group-hover:border-[#d4af37]/60 group-hover:bg-[#d4af37]/10 transition-all duration-300">
+                  <span className="text-[#d4af37] text-xs font-bold tracking-widest font-mono">
+                    {extension || 'BIN'}
+                  </span>
+                </div>
+                <span className="text-[10px] text-zinc-500 uppercase tracking-widest font-medium">
+                  {file.mimeType?.split('/')[0] || 'Resource'}
+                </span>
+              </div>
+            )}
+
+            {isVideo && (
+              <div className="absolute top-2.5 right-2.5 px-2 py-0.5 rounded-md bg-black/70 border border-[#d4af37]/50 text-[#d4af37] text-[9px] font-semibold flex items-center gap-1 backdrop-blur-sm shadow-md">
+                <Play className="w-2.5 h-2.5 fill-current" /> VIDEO
+              </div>
+            )}
+
+            {/* Hover quick action overlay */}
+            <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2 backdrop-blur-[2px]">
+              <span className="text-xs text-white font-medium flex items-center gap-1 px-3 py-1.5 rounded-lg bg-[#d4af37] text-black font-semibold shadow-lg">
+                <Eye className="w-3.5 h-3.5 text-black" /> Preview
               </span>
             </div>
-            <span className="text-[10px] text-zinc-500 uppercase tracking-widest font-medium">
-              {file.mimeType?.split('/')[0] || 'Resource'}
-            </span>
           </div>
-        )}
-
-        {/* Hover quick action overlay */}
-        <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2 backdrop-blur-[2px]">
-          <span className="text-xs text-white font-medium flex items-center gap-1 px-3 py-1.5 rounded-lg bg-[#d4af37] text-black font-semibold shadow-lg">
-            <Eye className="w-3.5 h-3.5 text-black" /> Preview
-          </span>
-        </div>
-      </div>
+        );
+      })()}
 
       {/* Meta Top Line */}
       <div className="flex justify-between items-center mb-1.5">

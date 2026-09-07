@@ -4,6 +4,7 @@ import {
   Instagram, Twitter, Github, Disc as Discord, CheckCircle2, Sparkles 
 } from 'lucide-react';
 import { formatDownloadCount } from '../utils/formatters';
+import { INSTAGRAM_PROFILE_URL } from '../config/social';
 
 interface FooterProps {
   onNavigate: (route: string) => void;
@@ -67,7 +68,7 @@ export const Footer: React.FC<FooterProps> = ({ onNavigate, stats }) => {
             {/* Social Icons */}
             <div className="flex items-center gap-3 pt-2">
               <a
-                href="https://www.instagram.com/aman_ansari__09/"
+                href={INSTAGRAM_PROFILE_URL}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="w-8 h-8 rounded-lg bg-white/[0.04] border border-white/[0.08] hover:border-[#d4af37]/50 hover:bg-[#d4af37]/10 flex items-center justify-center text-zinc-400 hover:text-[#d4af37] transition-all"

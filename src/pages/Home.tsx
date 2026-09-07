@@ -5,6 +5,7 @@ import {
 } from 'lucide-react';
 import { FileResource } from '../types';
 import { FileCard } from '../components/FileCard';
+import { InstagramSection } from '../components/InstagramSection';
 import { api } from '../services/api';
 
 export const MAIN_CATEGORIES = [
@@ -100,14 +101,20 @@ export const Home: React.FC<HomeProps> = ({
     async function loadHomeData() {
       try {
         const [featRes, latestRes, statsRes] = await Promise.all([
-          api.getFiles({ featured: true, limit: 4 }),
-          api.getFiles({ sort: 'latest', limit: 4 }),
+          api.getFiles({ featured: true, limit: 8 }),
+          api.getFiles({ sort: 'latest', limit: 8 }),
           api.getPublicStats()
         ]);
 
         const feat = featRes?.files || [];
         const latest = latestRes?.files || [];
-        setFeaturedFiles(feat.length > 0 ? feat : latest.slice(0, 4));
+        const combined: FileResource[] = [...latest];
+        for (const item of feat) {
+          if (!combined.some(c => c.id === item.id)) {
+            combined.push(item);
+          }
+        }
+        setFeaturedFiles(combined.slice(0, 8));
         if (statsRes) {
           setStats({
             totalFiles: statsRes.totalFiles || 12450,
@@ -474,6 +481,9 @@ export const Home: React.FC<HomeProps> = ({
           </div>
         </div>
       </section>
+
+      {/* 6. CONNECT WITH ME: INSTAGRAM PROFILE DIRECT LINK */}
+      <InstagramSection />
 
       {/* SHOWCASE MODAL (WATCH SHOWCASE) */}
       {showcaseOpen && (

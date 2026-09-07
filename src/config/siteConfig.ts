@@ -73,3 +73,5 @@ export const siteConfig: SiteConfig = {
     ownerName: "VELORA Core Administration"
   }
 };
+
+export { INSTAGRAM_PROFILE_URL, INSTAGRAM_USERNAME, SOCIAL_CONFIG } from './social';

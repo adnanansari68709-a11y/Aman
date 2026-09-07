@@ -72,15 +72,16 @@ export function createApiApp() {
       }
       try {
         const fd = fs.openSync(filePath, 'r');
-        const headerBuf = Buffer.alloc(12);
-        fs.readSync(fd, headerBuf, 0, 12, 0);
+        const headerBuf = Buffer.alloc(Math.min(fileSize, 64));
+        fs.readSync(fd, headerBuf, 0, headerBuf.length, 0);
         fs.closeSync(fd);
-        const ftyp = headerBuf.toString('ascii', 4, 8);
-        if (ftyp !== 'ftyp') {
-          return { valid: false, status: 400, error: 'Invalid MP4 video format: missing standard ISO Base Media ftyp signature.' };
+        const headerStr = headerBuf.toString('ascii');
+        const hasIsoSignature = headerStr.includes('ftyp') || headerStr.includes('moov') || headerStr.includes('mdat') || headerStr.includes('wide');
+        if (!hasIsoSignature && fileSize > 1024) {
+          return { valid: false, status: 400, error: 'Invalid MP4 video format: missing standard ISO Base Media signature.' };
         }
       } catch (err: any) {
-        return { valid: false, status: 400, error: `Failed to inspect MP4 binary headers: ${err.message}` };
+        console.warn('Notice: MP4 header verification skipped:', err.message);
       }
     }
 
@@ -200,6 +201,41 @@ export function createApiApp() {
     res.json({ success: true, data: categories });
   });
 
+  function serveFileStream(req: Request, res: Response, fileStream: { stream: any; size: number; mimeType: string; fullPath?: string }, disposition: 'inline' | 'attachment', fileName: string) {
+    res.setHeader('Accept-Ranges', 'bytes');
+    res.setHeader('Content-Type', fileStream.mimeType || 'application/octet-stream');
+
+    if (disposition === 'attachment') {
+      res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(fileName)}"`);
+    } else {
+      res.setHeader('Content-Disposition', `inline; filename="${encodeURIComponent(fileName)}"`);
+    }
+
+    const range = req.headers.range;
+    if (range && fileStream.fullPath && fs.existsSync(fileStream.fullPath)) {
+      const total = fileStream.size;
+      const parts = range.replace(/bytes=/, '').split('-');
+      const start = parseInt(parts[0], 10);
+      const end = parts[1] ? parseInt(parts[1], 10) : total - 1;
+      if (!isNaN(start) && !isNaN(end) && start <= end && start < total) {
+        const chunkSize = (end - start) + 1;
+        const partialStream = fs.createReadStream(fileStream.fullPath, { start, end });
+        res.writeHead(206, {
+          'Content-Range': `bytes ${start}-${end}/${total}`,
+          'Accept-Ranges': 'bytes',
+          'Content-Length': chunkSize,
+          'Content-Type': fileStream.mimeType || 'application/octet-stream',
+          'Cache-Control': 'public, max-age=86400'
+        });
+        return partialStream.pipe(res);
+      }
+    }
+
+    res.setHeader('Content-Length', fileStream.size);
+    res.setHeader('Cache-Control', 'public, max-age=86400');
+    return fileStream.stream.pipe(res);
+  }
+
   router.get('/public/files', (req: Request, res: Response) => {
     const { category, categorySlug, search, sort, page, limit, featured } = req.query;
     const result = db.getFiles({
@@ -212,7 +248,13 @@ export function createApiApp() {
       page: page ? parseInt(page as string, 10) : 1,
       limit: limit ? parseInt(limit as string, 10) : 12
     });
-    res.json({ success: true, data: result.files, pagination: { total: result.total, page: result.page, totalPages: result.totalPages } });
+    res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+    res.json({
+      success: true,
+      data: result.files,
+      files: result.files,
+      pagination: { total: result.total, page: result.page, totalPages: result.totalPages }
+    });
   });
 
   router.get('/public/files/:slug', (req: Request, res: Response) => {
@@ -228,6 +270,7 @@ export function createApiApp() {
     const related = db.getFiles({ publishedOnly: true, categoryId: file.categoryId, limit: 5 }).files
       .filter(f => f.id !== file.id)
       .slice(0, 4);
+    res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
     res.json({
       success: true,
       data: {
@@ -257,10 +300,7 @@ export function createApiApp() {
     if (file.storagePath) {
       const fileStream = storage.getFileStream(file.storagePath);
       if (fileStream) {
-        res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(file.fileName)}"`);
-        res.setHeader('Content-Type', file.mimeType || 'application/octet-stream');
-        res.setHeader('Content-Length', fileStream.size);
-        return fileStream.stream.pipe(res);
+        return serveFileStream(req, res, fileStream, 'attachment', file.fileName);
       }
     }
 
@@ -284,9 +324,7 @@ export function createApiApp() {
     if (file.storagePath) {
       const fileStream = storage.getFileStream(file.storagePath);
       if (fileStream) {
-        res.setHeader('Content-Type', file.mimeType || 'application/octet-stream');
-        res.setHeader('Content-Disposition', `inline; filename="${encodeURIComponent(file.fileName)}"`);
-        return fileStream.stream.pipe(res);
+        return serveFileStream(req, res, fileStream, 'inline', file.fileName);
       }
     }
 
@@ -308,10 +346,8 @@ export function createApiApp() {
       return res.status(404).json({ success: false, error: 'Raw resource not located in storage system.' });
     }
 
-    res.setHeader('Content-Type', fileStream.mimeType);
-    res.setHeader('Content-Length', fileStream.size);
-    res.setHeader('Cache-Control', 'public, max-age=86400');
-    fileStream.stream.pipe(res);
+    const fileName = path.basename(rawPath);
+    return serveFileStream(req, res, fileStream, 'inline', fileName);
   });
 
   router.post('/public/contact', (req: Request, res: Response) => {
@@ -483,7 +519,7 @@ export function createApiApp() {
           version: version ? version.trim() : '1.0.0',
           tags: parsedTags,
           featured: featured === 'true' || featured === true,
-          published: published === 'true' || published === true
+          published: (published === 'false' || published === false) ? false : true
         });
 
         res.status(201).json({ success: true, data: newResource });
@@ -632,7 +668,7 @@ export function createApiApp() {
           version: version ? version.trim() : '1.0.0',
           tags: parsedTags,
           featured: featured === 'true' || featured === true,
-          published: published === 'true' || published === true
+          published: (published === 'false' || published === false) ? false : true
         });
 
         res.status(201).json({ success: true, data: newResource });

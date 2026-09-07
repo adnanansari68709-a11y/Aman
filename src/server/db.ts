@@ -20,9 +20,27 @@ interface DatabaseSchema {
   settings: Record<string, any>;
 }
 
+let netlifyBlobsModule: any = null;
+try {
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  netlifyBlobsModule = require('@netlify/blobs');
+} catch {
+  // optional
+}
+
+function getNetlifyDbStore() {
+  if (!netlifyBlobsModule || typeof netlifyBlobsModule.getStore !== 'function') return null;
+  try {
+    return netlifyBlobsModule.getStore('velora-db');
+  } catch {
+    return null;
+  }
+}
+
 export class JsonDatabase {
   private dbPath: string;
   private data: DatabaseSchema;
+  private lastMtime: number = 0;
 
   constructor(customPath?: string) {
     const isServerless = Boolean(
@@ -40,6 +58,23 @@ export class JsonDatabase {
     this.ensureDataDir();
     this.data = this.loadDatabase();
     this.initializeDefaults();
+    this.syncFromNetlifyBlobs();
+  }
+
+  private async syncFromNetlifyBlobs() {
+    try {
+      const store = getNetlifyDbStore();
+      if (store) {
+        const remoteData = await store.get('db.json', { type: 'json' });
+        if (remoteData && Array.isArray(remoteData.files) && remoteData.files.length > 0) {
+          // Merge remote data into local instance
+          this.data = remoteData;
+          this.saveDatabase();
+        }
+      }
+    } catch {
+      // ignore in environments without Blobs configuration
+    }
   }
 
   private ensureDataDir() {
@@ -53,9 +88,29 @@ export class JsonDatabase {
     }
   }
 
+  public refreshIfStale() {
+    try {
+      if (fs.existsSync(this.dbPath)) {
+        const stat = fs.statSync(this.dbPath);
+        if (stat.mtimeMs > this.lastMtime) {
+          const raw = fs.readFileSync(this.dbPath, 'utf-8');
+          const parsed = JSON.parse(raw);
+          if (parsed && Array.isArray(parsed.files)) {
+            this.data = parsed;
+            this.lastMtime = stat.mtimeMs;
+          }
+        }
+      }
+    } catch {
+      // ignore
+    }
+  }
+
   private loadDatabase(): DatabaseSchema {
     if (fs.existsSync(this.dbPath)) {
       try {
+        const stat = fs.statSync(this.dbPath);
+        this.lastMtime = stat.mtimeMs;
         const raw = fs.readFileSync(this.dbPath, 'utf-8');
         return JSON.parse(raw);
       } catch (err) {
@@ -70,6 +125,10 @@ export class JsonDatabase {
       path.join(__dirname, 'data', 'db.json')
     ];
 
+    if (process.env.LAMBDA_TASK_ROOT) {
+      seedPaths.unshift(path.join(process.env.LAMBDA_TASK_ROOT, 'data', 'db.json'));
+    }
+
     for (const p of seedPaths) {
       if (fs.existsSync(p)) {
         try {
@@ -79,6 +138,8 @@ export class JsonDatabase {
           try {
             if (this.dbPath !== p) {
               fs.writeFileSync(this.dbPath, raw, 'utf-8');
+              const stat = fs.statSync(this.dbPath);
+              this.lastMtime = stat.mtimeMs;
             }
           } catch (writeErr) {
             // ignore
@@ -102,8 +163,23 @@ export class JsonDatabase {
   private saveDatabase() {
     try {
       const tempPath = `${this.dbPath}.tmp`;
-      fs.writeFileSync(tempPath, JSON.stringify(this.data, null, 2), 'utf-8');
+      const serialized = JSON.stringify(this.data, null, 2);
+      fs.writeFileSync(tempPath, serialized, 'utf-8');
       fs.renameSync(tempPath, this.dbPath);
+      try {
+        const stat = fs.statSync(this.dbPath);
+        this.lastMtime = stat.mtimeMs;
+      } catch {}
+
+      // Asynchronously synchronize to Netlify Blobs if store is active
+      try {
+        const store = getNetlifyDbStore();
+        if (store) {
+          store.setJSON('db.json', this.data).catch((err: any) => {
+            console.warn('Netlify Blobs sync notification for db:', err?.message || err);
+          });
+        }
+      } catch {}
     } catch (err) {
       console.warn('Notice: database save skipped (read-only filesystem):', err);
     }
@@ -735,19 +811,22 @@ This architectural briefing outlines the zero-latency, cryptographically verifie
 
   // --- CATEGORIES OPERATIONS ---
   public getAllCategories(includeFileCount: boolean = true): Category[] {
+    this.refreshIfStale();
     return this.data.categories.map(c => {
       const fileCount = includeFileCount 
-        ? this.data.files.filter(f => f.categoryId === c.id && f.published).length
+        ? this.data.files.filter(f => f.categoryId === c.id && (f.published || (f as any).status === 'published')).length
         : undefined;
       return { ...c, fileCount };
     });
   }
 
   public getCategoryById(id: string): Category | null {
+    this.refreshIfStale();
     return this.data.categories.find(c => c.id === id) || null;
   }
 
   public getCategoryBySlug(slug: string): Category | null {
+    this.refreshIfStale();
     return this.data.categories.find(c => c.slug === slug) || null;
   }
 
@@ -821,6 +900,36 @@ This architectural briefing outlines the zero-latency, cryptographically verifie
   }
 
   // --- FILES OPERATIONS ---
+  private enrichFile(file: FileResource): FileResource {
+    const cat = this.data.categories.find(c => c.id === file.categoryId);
+    const published = typeof file.published === 'boolean' ? file.published : (file as any).status === 'published';
+    const isVideo = (file.mimeType && file.mimeType.startsWith('video/')) || 
+      (file.fileName && /\.(mp4|webm|mov|mkv)$/i.test(file.fileName));
+    
+    let thumb = file.thumbnailUrl || (file as any).thumbnail || '';
+    if (!thumb && isVideo) {
+      thumb = 'https://images.unsplash.com/photo-1574717024653-61fd2cf4d44d?q=80&w=800&auto=format&fit=crop';
+    }
+
+    return {
+      ...file,
+      categoryName: cat?.name || 'General',
+      categorySlug: cat?.slug || 'general',
+      category: file.categoryId,
+      thumbnailUrl: thumb,
+      thumbnail: thumb,
+      fileUrl: file.fileUrl,
+      storageUrl: file.fileUrl,
+      mimeType: file.mimeType || 'application/octet-stream',
+      type: file.mimeType || 'application/octet-stream',
+      published,
+      status: published ? 'published' : 'draft',
+      downloadCount: typeof file.downloadCount === 'number' ? file.downloadCount : 0,
+      tags: Array.isArray(file.tags) ? file.tags : [],
+      featured: Boolean(file.featured)
+    };
+  }
+
   public getFiles(params: {
     publishedOnly?: boolean;
     categoryId?: string;
@@ -831,10 +940,11 @@ This architectural briefing outlines the zero-latency, cryptographically verifie
     page?: number;
     limit?: number;
   }): { files: FileResource[]; total: number; page: number; totalPages: number } {
+    this.refreshIfStale();
     let result = [...this.data.files];
 
     if (params.publishedOnly) {
-      result = result.filter(f => f.published);
+      result = result.filter(f => f.published === true || (f as any).status === 'published');
     }
 
     if (params.featured !== undefined) {
@@ -876,15 +986,8 @@ This architectural briefing outlines the zero-latency, cryptographically verifie
       });
     }
 
-    // Attach category names
-    result = result.map(f => {
-      const cat = this.data.categories.find(c => c.id === f.categoryId);
-      return {
-        ...f,
-        categoryName: cat?.name || 'General',
-        categorySlug: cat?.slug || 'general'
-      };
-    });
+    // Attach category names and compatibility field aliases
+    result = result.map(f => this.enrichFile(f));
 
     // Sorting
     switch (params.sort) {
@@ -922,25 +1025,17 @@ This architectural briefing outlines the zero-latency, cryptographically verifie
   }
 
   public getFileById(id: string): FileResource | null {
+    this.refreshIfStale();
     const file = this.data.files.find(f => f.id === id);
     if (!file) return null;
-    const cat = this.data.categories.find(c => c.id === file.categoryId);
-    return {
-      ...file,
-      categoryName: cat?.name || 'General',
-      categorySlug: cat?.slug || 'general'
-    };
+    return this.enrichFile(file);
   }
 
   public getFileBySlug(slug: string, publishedOnly: boolean = true): FileResource | null {
-    const file = this.data.files.find(f => f.slug === slug && (!publishedOnly || f.published));
+    this.refreshIfStale();
+    const file = this.data.files.find(f => f.slug === slug && (!publishedOnly || f.published || (f as any).status === 'published'));
     if (!file) return null;
-    const cat = this.data.categories.find(c => c.id === file.categoryId);
-    return {
-      ...file,
-      categoryName: cat?.name || 'General',
-      categorySlug: cat?.slug || 'general'
-    };
+    return this.enrichFile(file);
   }
 
   public createFile(fileData: Omit<FileResource, 'id' | 'slug' | 'downloadCount' | 'createdAt' | 'updatedAt'>): FileResource {
@@ -951,11 +1046,25 @@ This architectural briefing outlines the zero-latency, cryptographically verifie
       finalSlug = `${slugBase}-${counter++}`;
     }
 
+    const isVideo = (fileData.mimeType && fileData.mimeType.startsWith('video/')) || 
+      (fileData.fileName && /\.(mp4|webm|mov|mkv)$/i.test(fileData.fileName));
+    
+    let finalThumbnailUrl = fileData.thumbnailUrl || (fileData as any).thumbnail || '';
+    if (!finalThumbnailUrl && isVideo) {
+      finalThumbnailUrl = 'https://images.unsplash.com/photo-1574717024653-61fd2cf4d44d?q=80&w=800&auto=format&fit=crop';
+    }
+
+    const isPublished = typeof fileData.published === 'boolean' 
+      ? fileData.published 
+      : ((fileData as any).status === 'published' || true);
+
     const now = new Date().toISOString();
     const newFile: FileResource = {
       ...fileData,
       id: `file_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`,
       slug: finalSlug,
+      thumbnailUrl: finalThumbnailUrl,
+      published: isPublished,
       downloadCount: 0,
       createdAt: now,
       updatedAt: now
@@ -963,7 +1072,7 @@ This architectural briefing outlines the zero-latency, cryptographically verifie
 
     this.data.files.unshift(newFile);
     this.saveDatabase();
-    return newFile;
+    return this.enrichFile(newFile);
   }
 
   public updateFile(id: string, updates: Partial<FileResource>): FileResource | null {
@@ -990,7 +1099,7 @@ This architectural briefing outlines the zero-latency, cryptographically verifie
 
     this.data.files[index] = updated;
     this.saveDatabase();
-    return updated;
+    return this.enrichFile(updated);
   }
 
   public async deleteFile(id: string): Promise<boolean> {
@@ -1030,7 +1139,8 @@ This architectural briefing outlines the zero-latency, cryptographically verifie
 
   // --- STATS ---
   public getSiteStats(): SiteStats {
-    const totalFiles = this.data.files.filter(f => f.published).length;
+    this.refreshIfStale();
+    const totalFiles = this.data.files.filter(f => f.published || (f as any).status === 'published').length;
     const totalDownloads = this.data.files.reduce((acc, f) => acc + (f.downloadCount || 0), 0);
     const totalCategories = this.data.categories.length;
     const totalStorageBytes = this.data.files.reduce((acc, f) => acc + (f.fileSize || 0), 0);
