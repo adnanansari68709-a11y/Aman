@@ -45,13 +45,6 @@ export const FileDetail: React.FC<FileDetailProps> = ({
   const videoRef = useRef<HTMLVideoElement | null>(null);
 
   useEffect(() => {
-    if (file && videoRef.current) {
-      setVideoError(null);
-      videoRef.current.load();
-    }
-  }, [file?.id]);
-
-  useEffect(() => {
     let active = true;
 
     async function loadFile() {
@@ -228,10 +221,12 @@ export const FileDetail: React.FC<FileDetailProps> = ({
                     controls
                     playsInline
                     preload="metadata"
-                    src={api.getPreviewUrl(file.id)}
                     className="w-full max-h-[460px] rounded-xl bg-black"
                     poster={thumb || undefined}
                     onLoadedMetadata={() => {
+                      setVideoError(null);
+                    }}
+                    onCanPlay={() => {
                       setVideoError(null);
                     }}
                     onError={(e) => {

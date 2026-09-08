@@ -11,6 +11,39 @@ try {
   // optional
 }
 
+function getNetlifyBlobStores(): any[] {
+  if (!netlifyBlobsModule) return [];
+  const siteID = process.env.NETLIFY_SITE_ID || process.env.SITE_ID;
+  const token = process.env.NETLIFY_BLOBS_TOKEN || process.env.NETLIFY_AUTH_TOKEN || process.env.NETLIFY_API_TOKEN;
+
+  const stores: any[] = [];
+  const storeNames = ['velora-files', 'files', 'velora-storage', 'storage'];
+
+  for (const name of storeNames) {
+    try {
+      if (siteID && token && typeof netlifyBlobsModule.getStore === 'function') {
+        const s = netlifyBlobsModule.getStore({ name, siteID, token });
+        if (s) stores.push(s);
+      } else if (typeof netlifyBlobsModule.getStore === 'function') {
+        const s = netlifyBlobsModule.getStore({ name });
+        if (s) stores.push(s);
+      }
+    } catch {}
+  }
+
+  // Also try deploy store
+  try {
+    if (typeof netlifyBlobsModule.getDeployStore === 'function') {
+      const deployStore = siteID && token 
+        ? netlifyBlobsModule.getDeployStore({ siteID, token })
+        : netlifyBlobsModule.getDeployStore();
+      if (deployStore) stores.push(deployStore);
+    }
+  } catch {}
+
+  return stores;
+}
+
 function getNetlifyBlobStore(storeName: string) {
   if (!netlifyBlobsModule || typeof netlifyBlobsModule.getStore !== 'function') return null;
   const siteID = process.env.NETLIFY_SITE_ID || process.env.SITE_ID;
@@ -216,20 +249,22 @@ export class LocalStorageProvider implements IStorageProvider {
       }
     }
 
-    // Try to fetch from Netlify Blobs with multi-key fallbacks
+    // Try to fetch from Netlify Blobs with multi-key fallbacks across stores
     try {
-      const store = getNetlifyBlobStore('velora-files');
-      if (store) {
-        const normalized = storagePath.replace(/\\/g, '/');
-        const candidateKeys = Array.from(new Set([
-          normalized,
-          path.basename(normalized),
-          `files/${path.basename(normalized)}`,
-          `thumbnails/${path.basename(normalized)}`,
-          normalized.replace(/^files\//, ''),
-          normalized.replace(/^\/+/, '')
-        ]));
+      const stores = getNetlifyBlobStores();
+      const normalized = storagePath.replace(/\\/g, '/');
+      const candidateKeys = Array.from(new Set([
+        normalized,
+        path.basename(normalized),
+        `files/${path.basename(normalized)}`,
+        `thumbnails/${path.basename(normalized)}`,
+        normalized.replace(/^files\//, ''),
+        normalized.replace(/^\/+/, ''),
+        decodeURIComponent(normalized),
+        decodeURIComponent(path.basename(normalized))
+      ]));
 
+      for (const store of stores) {
         for (const blobKey of candidateKeys) {
           try {
             const data = await store.get(blobKey, { type: 'arrayBuffer' });
@@ -239,6 +274,8 @@ export class LocalStorageProvider implements IStorageProvider {
                 path.isAbsolute(storagePath) ? storagePath : path.join(this.baseDir, storagePath),
                 path.join('/tmp', 'uploads', storagePath),
                 path.join('/tmp', 'uploads', 'files', path.basename(storagePath)),
+                path.join('/tmp', storagePath),
+                path.join('/tmp', path.basename(storagePath)),
                 path.join(process.cwd(), 'data', 'uploads', storagePath),
                 path.join(process.cwd(), 'storage', storagePath)
               ];
@@ -278,18 +315,20 @@ export class LocalStorageProvider implements IStorageProvider {
 
     // 3. Fallback: stream directly from Netlify Blobs arrayBuffer in-memory (e.g. read-only serverless container)
     try {
-      const store = getNetlifyBlobStore('velora-files');
-      if (store) {
-        const normalized = storagePath.replace(/\\/g, '/');
-        const candidateKeys = Array.from(new Set([
-          normalized,
-          path.basename(normalized),
-          `files/${path.basename(normalized)}`,
-          `thumbnails/${path.basename(normalized)}`,
-          normalized.replace(/^files\//, ''),
-          normalized.replace(/^\/+/, '')
-        ]));
+      const stores = getNetlifyBlobStores();
+      const normalized = storagePath.replace(/\\/g, '/');
+      const candidateKeys = Array.from(new Set([
+        normalized,
+        path.basename(normalized),
+        `files/${path.basename(normalized)}`,
+        `thumbnails/${path.basename(normalized)}`,
+        normalized.replace(/^files\//, ''),
+        normalized.replace(/^\/+/, ''),
+        decodeURIComponent(normalized),
+        decodeURIComponent(path.basename(normalized))
+      ]));
 
+      for (const store of stores) {
         for (const blobKey of candidateKeys) {
           try {
             const data = await store.get(blobKey, { type: 'arrayBuffer' });

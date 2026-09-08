@@ -25,7 +25,39 @@ export function createApiApp() {
     next();
   });
 
-  // 2. Request body parsing
+  // 2. Request body parsing and serverless context propagation
+  app.use((req: Request, res: Response, next: NextFunction) => {
+    const getH = (name: string): string | undefined => {
+      const v = req.headers[name.toLowerCase()];
+      if (Array.isArray(v)) return v[0];
+      return v;
+    };
+    const sId = getH('x-nf-site-id');
+    const tok = getH('x-nf-token') || getH('x-nf-blobs-token');
+    const dep = getH('x-nf-deploy-id');
+    const raw = getH('x-nf-blobs');
+    if (sId) {
+      process.env.NETLIFY_SITE_ID = sId;
+      process.env.SITE_ID = sId;
+    }
+    if (tok) {
+      process.env.NETLIFY_BLOBS_TOKEN = tok;
+    }
+    if (dep) {
+      process.env.NETLIFY_DEPLOY_ID = dep;
+      process.env.DEPLOY_ID = dep;
+    }
+    if (raw && typeof raw === 'string') {
+      try {
+        const decoded = Buffer.from(raw, 'base64').toString('utf8');
+        const data = JSON.parse(decoded);
+        if (data.token && !process.env.NETLIFY_BLOBS_TOKEN) process.env.NETLIFY_BLOBS_TOKEN = data.token;
+        if (data.url && !process.env.NETLIFY_BLOBS_EDGE_URL) process.env.NETLIFY_BLOBS_EDGE_URL = data.url;
+      } catch {}
+    }
+    next();
+  });
+
   app.use(express.json({ limit: '10mb' }));
   app.use(express.urlencoded({ extended: true, limit: '10mb' }));
   app.use(cookieParser());
@@ -246,7 +278,7 @@ export function createApiApp() {
     if (disposition === 'attachment') {
       res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(fileName)}"`);
     } else {
-      res.setHeader('Content-Disposition', `inline; filename="${encodeURIComponent(fileName)}"`);
+      res.setHeader('Content-Disposition', 'inline');
     }
 
     // 4. Handle HTTP Range Requests (RFC 7233 / RFC 9110 compliant)
@@ -325,6 +357,17 @@ export function createApiApp() {
 
         // Serve byte slice from disk if file is located on filesystem
         if (fileResource.fullPath && fs.existsSync(fileResource.fullPath)) {
+          if (isServerless || chunkSize <= 4 * 1024 * 1024) {
+            try {
+              const fd = fs.openSync(fileResource.fullPath, 'r');
+              const chunkBuffer = Buffer.alloc(chunkSize);
+              fs.readSync(fd, chunkBuffer, 0, chunkSize, start);
+              fs.closeSync(fd);
+              return res.end(chunkBuffer);
+            } catch (readErr) {
+              console.error('Direct chunk read failed, falling back to stream:', readErr);
+            }
+          }
           const partialStream = fs.createReadStream(fileResource.fullPath, { start, end });
           partialStream.on('error', (err) => {
             console.error('Video partial read error:', err);
@@ -358,6 +401,13 @@ export function createApiApp() {
       res.setHeader('Content-Length', String(chunkSize));
       if (req.method === 'HEAD') return res.end();
       if (fileResource.fullPath && fs.existsSync(fileResource.fullPath)) {
+        try {
+          const fd = fs.openSync(fileResource.fullPath, 'r');
+          const chunkBuffer = Buffer.alloc(chunkSize);
+          fs.readSync(fd, chunkBuffer, 0, chunkSize, start);
+          fs.closeSync(fd);
+          return res.end(chunkBuffer);
+        } catch {}
         const partialStream = fs.createReadStream(fileResource.fullPath, { start, end });
         return partialStream.pipe(res);
       }
@@ -375,6 +425,12 @@ export function createApiApp() {
     }
 
     if (fileResource.fullPath && fs.existsSync(fileResource.fullPath)) {
+      if ((isServerless && total <= 4 * 1024 * 1024) || total <= 2 * 1024 * 1024) {
+        try {
+          const fullBuf = fs.readFileSync(fileResource.fullPath);
+          return res.end(fullBuf);
+        } catch {}
+      }
       const fullStream = fs.createReadStream(fileResource.fullPath);
       fullStream.on('error', (err) => {
         console.error('Video full read error:', err);
@@ -497,17 +553,26 @@ export function createApiApp() {
   router.head('/public/files/:id/download', handleDownload);
 
   const handlePreview = async (req: Request, res: Response) => {
-    const { id } = req.params;
-    let file = db.getFileById(id);
+    const rawId = req.params.id;
+    const cleanId = decodeURIComponent(rawId);
+    let file = db.getFileById(cleanId) || db.getFileBySlug(cleanId);
+    if (!file && cleanId !== rawId) {
+      file = db.getFileById(rawId) || db.getFileBySlug(rawId);
+    }
     if (!file) {
-      file = db.getFileBySlug(id);
+      const allFiles = db.getFiles({ limit: 1000 }).files;
+      file = allFiles.find(f => f.id === cleanId || f.slug === cleanId || f.fileName === cleanId || f.storagePath?.includes(cleanId));
     }
     if (!file && (process.env.NETLIFY || process.env.AWS_LAMBDA_FUNCTION_NAME || process.env.LAMBDA_TASK_ROOT)) {
       await db.syncFromNetlifyBlobs().catch(() => {});
-      file = db.getFileById(id) || db.getFileBySlug(id);
+      file = db.getFileById(cleanId) || db.getFileBySlug(cleanId);
+      if (!file) {
+        const allFiles = db.getFiles({ limit: 1000 }).files;
+        file = allFiles.find(f => f.id === cleanId || f.slug === cleanId || f.fileName === cleanId || f.storagePath?.includes(cleanId));
+      }
     }
     if (!file) {
-      return res.status(404).json({ success: false, error: 'File not found.' });
+      return res.status(404).type('text/plain').send('File not found');
     }
 
     const candidatePaths = [
@@ -517,7 +582,9 @@ export function createApiApp() {
       file.fileUrl?.startsWith('/data/uploads/') ? file.fileUrl.replace('/data/uploads/', '') : null,
       file.fileName ? `files/${file.fileName}` : null,
       file.fileName ? file.fileName : null,
-      file.storagePath ? path.basename(file.storagePath) : null
+      file.storagePath ? path.basename(file.storagePath) : null,
+      file.id ? `files/${file.id}` : null,
+      file.id ? file.id : null
     ].filter(Boolean) as string[];
 
     let resource = null;
@@ -534,7 +601,7 @@ export function createApiApp() {
       return res.redirect(file.fileUrl);
     }
 
-    res.status(404).json({ success: false, error: 'Preview content unavailable.' });
+    res.status(404).type('text/plain').send('Preview content unavailable');
   };
 
   router.get('/public/files/:id/preview', handlePreview);
@@ -543,7 +610,7 @@ export function createApiApp() {
   const handleRaw = async (req: Request, res: Response) => {
     const rawPath = req.params[0] || (req.params as any).path || '';
     if (!rawPath) {
-      return res.status(400).json({ success: false, error: 'Invalid file path.' });
+      return res.status(400).type('text/plain').send('Invalid file path');
     }
 
     const candidatePaths = [
@@ -551,7 +618,9 @@ export function createApiApp() {
       rawPath.replace(/^\/+/, ''),
       `files/${path.basename(rawPath)}`,
       `thumbnails/${path.basename(rawPath)}`,
-      path.basename(rawPath)
+      path.basename(rawPath),
+      decodeURIComponent(rawPath),
+      decodeURIComponent(path.basename(rawPath))
     ];
 
     let resource = null;
@@ -561,7 +630,7 @@ export function createApiApp() {
     }
 
     if (!resource) {
-      return res.status(404).json({ success: false, error: 'Raw resource not located in storage system.' });
+      return res.status(404).type('text/plain').send('Raw resource not located in storage system');
     }
 
     const fileName = path.basename(rawPath);
