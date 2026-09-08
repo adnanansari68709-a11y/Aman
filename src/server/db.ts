@@ -30,10 +30,19 @@ try {
 
 function getNetlifyDbStore() {
   if (!netlifyBlobsModule || typeof netlifyBlobsModule.getStore !== 'function') return null;
+  const siteID = process.env.NETLIFY_SITE_ID || process.env.SITE_ID;
+  const token = process.env.NETLIFY_BLOBS_TOKEN || process.env.NETLIFY_AUTH_TOKEN || process.env.NETLIFY_API_TOKEN;
   try {
-    return netlifyBlobsModule.getStore('velora-db');
+    if (siteID && token) {
+      return netlifyBlobsModule.getStore({ name: 'velora-db', siteID, token, consistency: 'strong' });
+    }
+    return netlifyBlobsModule.getStore({ name: 'velora-db', consistency: 'strong' });
   } catch {
-    return null;
+    try {
+      return netlifyBlobsModule.getStore('velora-db');
+    } catch {
+      return null;
+    }
   }
 }
 
@@ -41,6 +50,7 @@ export class JsonDatabase {
   private dbPath: string;
   private data: DatabaseSchema;
   private lastMtime: number = 0;
+  private lastRemoteSync: number = 0;
 
   constructor(customPath?: string) {
     const isServerless = Boolean(
@@ -58,23 +68,36 @@ export class JsonDatabase {
     this.ensureDataDir();
     this.data = this.loadDatabase();
     this.initializeDefaults();
-    this.syncFromNetlifyBlobs();
+    this.syncFromNetlifyBlobs().catch(() => {});
   }
 
-  private async syncFromNetlifyBlobs() {
+  public async syncFromNetlifyBlobs(force = false): Promise<boolean> {
+    const now = Date.now();
+    if (!force && now - this.lastRemoteSync < 3000) {
+      return false;
+    }
+    this.lastRemoteSync = now;
+
     try {
       const store = getNetlifyDbStore();
       if (store) {
         const remoteData = await store.get('db.json', { type: 'json' });
         if (remoteData && Array.isArray(remoteData.files) && remoteData.files.length > 0) {
-          // Merge remote data into local instance
           this.data = remoteData;
-          this.saveDatabase();
+          try {
+            const tempPath = `${this.dbPath}.tmp`;
+            fs.writeFileSync(tempPath, JSON.stringify(this.data, null, 2), 'utf-8');
+            fs.renameSync(tempPath, this.dbPath);
+            const stat = fs.statSync(this.dbPath);
+            this.lastMtime = stat.mtimeMs;
+          } catch {}
+          return true;
         }
       }
     } catch {
       // ignore in environments without Blobs configuration
     }
+    return false;
   }
 
   private ensureDataDir() {
@@ -182,6 +205,18 @@ export class JsonDatabase {
       } catch {}
     } catch (err) {
       console.warn('Notice: database save skipped (read-only filesystem):', err);
+    }
+  }
+
+  public async saveDatabaseAsync(): Promise<void> {
+    this.saveDatabase();
+    try {
+      const store = getNetlifyDbStore();
+      if (store) {
+        await store.setJSON('db.json', this.data);
+      }
+    } catch (err: any) {
+      console.warn('Netlify Blobs sync notification for db:', err?.message || err);
     }
   }
 
@@ -813,9 +848,25 @@ This architectural briefing outlines the zero-latency, cryptographically verifie
   public getAllCategories(includeFileCount: boolean = true): Category[] {
     this.refreshIfStale();
     return this.data.categories.map(c => {
-      const fileCount = includeFileCount 
-        ? this.data.files.filter(f => f.categoryId === c.id && (f.published || (f as any).status === 'published')).length
-        : undefined;
+      let fileCount: number | undefined = undefined;
+      if (includeFileCount) {
+        fileCount = this.data.files.filter(f => {
+          const isPublished = f.published !== false && (f as any).status !== 'draft';
+          if (!isPublished) return false;
+          if (f.categoryId === c.id) return true;
+          const canonical = this.resolveCanonicalType(f);
+          const slug = (c.slug || '').toLowerCase();
+          if (slug === 'videos' && canonical === 'video') return true;
+          if ((slug === 'photos' || slug === 'images') && canonical === 'image') return true;
+          if ((slug === 'audio' || slug === 'music') && canonical === 'audio') return true;
+          if ((slug === 'documents' || slug === 'docs') && canonical === 'document') return true;
+          if ((slug === 'apps' || slug === 'software') && canonical === 'software') return true;
+          if (slug === 'templates' && f.categoryId === 'cat_templates') return true;
+          if (slug === 'archives' && (canonical === 'archive' || f.categoryId === 'cat_archives')) return true;
+          if (slug === 'games' && f.categoryId === 'cat_games') return true;
+          return false;
+        }).length;
+      }
       return { ...c, fileCount };
     });
   }
@@ -900,28 +951,151 @@ This architectural briefing outlines the zero-latency, cryptographically verifie
   }
 
   // --- FILES OPERATIONS ---
+  public resolveCanonicalType(file: {
+    mimeType?: string;
+    fileName?: string;
+    categoryId?: string;
+    type?: string;
+    categorySlug?: string;
+  }): string {
+    const mime = (file.mimeType || '').toLowerCase();
+    const name = (file.fileName || '').toLowerCase();
+    const catId = (file.categoryId || '').toLowerCase();
+    const existingType = (file.type || '').toLowerCase();
+    const slug = (file.categorySlug || '').toLowerCase();
+
+    // Check video
+    if (
+      existingType === 'video' ||
+      existingType === 'videos' ||
+      mime.startsWith('video/') ||
+      mime === 'video/mp4' ||
+      mime === 'video/webm' ||
+      mime === 'video/quicktime' ||
+      mime === 'video/mov' ||
+      mime === 'video/mpeg' ||
+      mime === 'video/x-matroska' ||
+      mime === 'video/avi' ||
+      mime === 'video/mkv' ||
+      /\.(mp4|webm|mov|mkv|avi|m4v|mpeg|mpg|wmv|flv|3gp|quicktime)$/i.test(name) ||
+      catId === 'cat_videos' ||
+      slug === 'videos' ||
+      slug === 'video'
+    ) {
+      return 'video';
+    }
+
+    // Check audio
+    if (
+      existingType === 'audio' ||
+      existingType === 'music' ||
+      mime.startsWith('audio/') ||
+      /\.(mp3|wav|ogg|m4a|aac|flac|wma)$/i.test(name) ||
+      catId === 'cat_audio' ||
+      catId === 'cat_music' ||
+      slug === 'audio' ||
+      slug === 'music'
+    ) {
+      return 'audio';
+    }
+
+    // Check image
+    if (
+      existingType === 'image' ||
+      existingType === 'photo' ||
+      existingType === 'images' ||
+      existingType === 'photos' ||
+      mime.startsWith('image/') ||
+      /\.(jpg|jpeg|png|gif|webp|svg|bmp|tiff|heic)$/i.test(name) ||
+      catId === 'cat_images' ||
+      catId === 'cat_photos' ||
+      slug === 'images' ||
+      slug === 'photos'
+    ) {
+      return 'image';
+    }
+
+    // Check document
+    if (
+      existingType === 'document' ||
+      existingType === 'doc' ||
+      existingType === 'documents' ||
+      mime.includes('pdf') ||
+      mime.includes('document') ||
+      mime.includes('word') ||
+      mime.includes('sheet') ||
+      mime.includes('text') ||
+      /\.(pdf|doc|docx|txt|rtf|xls|xlsx|ppt|pptx|csv|md)$/i.test(name) ||
+      catId === 'cat_docs' ||
+      slug === 'documents' ||
+      slug === 'docs'
+    ) {
+      return 'document';
+    }
+
+    // Check software / app
+    if (
+      existingType === 'software' ||
+      existingType === 'app' ||
+      existingType === 'apps' ||
+      catId === 'cat_software' ||
+      catId === 'cat_apps' ||
+      slug === 'software' ||
+      slug === 'apps' ||
+      /\.(exe|msi|dmg|pkg|apk|deb|rpm|appimage)$/i.test(name)
+    ) {
+      return 'software';
+    }
+
+    // Check archive
+    if (
+      existingType === 'archive' ||
+      existingType === 'archives' ||
+      mime.includes('zip') ||
+      mime.includes('tar') ||
+      mime.includes('compressed') ||
+      /\.(zip|tar|gz|rar|7z|bz2)$/i.test(name) ||
+      catId === 'cat_archives' ||
+      slug === 'archives'
+    ) {
+      return 'archive';
+    }
+
+    return mime ? mime.split('/')[0] : 'file';
+  }
+
   private enrichFile(file: FileResource): FileResource {
     const cat = this.data.categories.find(c => c.id === file.categoryId);
     const published = typeof file.published === 'boolean' ? file.published : (file as any).status === 'published';
-    const isVideo = (file.mimeType && file.mimeType.startsWith('video/')) || 
-      (file.fileName && /\.(mp4|webm|mov|mkv)$/i.test(file.fileName));
+    const canonicalType = this.resolveCanonicalType({
+      mimeType: file.mimeType,
+      fileName: file.fileName,
+      categoryId: file.categoryId,
+      type: file.type,
+      categorySlug: cat?.slug
+    });
+    const isVideo = canonicalType === 'video';
     
     let thumb = file.thumbnailUrl || (file as any).thumbnail || '';
     if (!thumb && isVideo) {
       thumb = 'https://images.unsplash.com/photo-1574717024653-61fd2cf4d44d?q=80&w=800&auto=format&fit=crop';
     }
 
+    const ext = file.fileName ? file.fileName.split('.').pop()?.toLowerCase() || '' : '';
+
     return {
       ...file,
-      categoryName: cat?.name || 'General',
-      categorySlug: cat?.slug || 'general',
+      categoryName: cat?.name || (isVideo ? 'Videos' : 'General'),
+      categorySlug: cat?.slug || (isVideo ? 'videos' : 'general'),
       category: file.categoryId,
+      categoryId: file.categoryId,
       thumbnailUrl: thumb,
       thumbnail: thumb,
       fileUrl: file.fileUrl,
       storageUrl: file.fileUrl,
-      mimeType: file.mimeType || 'application/octet-stream',
-      type: file.mimeType || 'application/octet-stream',
+      mimeType: file.mimeType || (isVideo ? 'video/mp4' : 'application/octet-stream'),
+      type: canonicalType,
+      format: ext || canonicalType,
       published,
       status: published ? 'published' : 'draft',
       downloadCount: typeof file.downloadCount === 'number' ? file.downloadCount : 0,
@@ -932,8 +1106,11 @@ This architectural briefing outlines the zero-latency, cryptographically verifie
 
   public getFiles(params: {
     publishedOnly?: boolean;
+    category?: string;
     categoryId?: string;
     categorySlug?: string;
+    type?: string;
+    format?: string;
     search?: string;
     featured?: boolean;
     sort?: string;
@@ -944,33 +1121,141 @@ This architectural briefing outlines the zero-latency, cryptographically verifie
     let result = [...this.data.files];
 
     if (params.publishedOnly) {
-      result = result.filter(f => f.published === true || (f as any).status === 'published');
+      result = result.filter(f => f.published !== false && (f as any).status !== 'draft');
     }
 
     if (params.featured !== undefined) {
       result = result.filter(f => f.featured === params.featured);
     }
 
-    if (params.categoryId) {
-      result = result.filter(f => f.categoryId === params.categoryId);
-    }
+    // Unified, fault-tolerant category and canonical type filter
+    const filterTerm = (
+      params.category ||
+      params.categorySlug ||
+      params.categoryId ||
+      params.type ||
+      params.format ||
+      ''
+    ).toLowerCase().trim();
 
-    if (params.categorySlug) {
-      const slug = params.categorySlug.toLowerCase().trim();
-      const targetSlugs = [slug];
-      if (slug === 'photos') targetSlugs.push('images');
-      if (slug === 'images') targetSlugs.push('photos');
-      if (slug === 'music') targetSlugs.push('audio');
-      if (slug === 'audio') targetSlugs.push('music');
-      if (slug === 'apps') targetSlugs.push('software');
+    if (filterTerm && filterTerm !== 'all' && filterTerm !== 'all sectors') {
+      result = result.filter(f => {
+        const cat = this.data.categories.find(c => c.id === f.categoryId);
+        const canonicalType = this.resolveCanonicalType({
+          mimeType: f.mimeType,
+          fileName: f.fileName,
+          categoryId: f.categoryId,
+          type: f.type,
+          categorySlug: cat?.slug
+        });
 
-      const matchedCats = this.data.categories.filter(c => targetSlugs.includes(c.slug.toLowerCase()));
-      const matchedCatIds = matchedCats.map(c => c.id);
-      if (matchedCatIds.length > 0) {
-        result = result.filter(f => matchedCatIds.includes(f.categoryId));
-      } else {
-        result = [];
-      }
+        const catId = (f.categoryId || '').toLowerCase();
+        const catSlug = (cat?.slug || '').toLowerCase();
+        const catName = (cat?.name || '').toLowerCase();
+        const mime = (f.mimeType || '').toLowerCase();
+        const fileName = (f.fileName || '').toLowerCase();
+
+        // 1. Exact match on categoryId, slug, name, or canonicalType
+        if (
+          catId === filterTerm ||
+          catSlug === filterTerm ||
+          catName === filterTerm ||
+          canonicalType === filterTerm
+        ) {
+          return true;
+        }
+
+        // 2. Video classification matches
+        if (
+          ['videos', 'video', 'cat_videos', 'cinematic'].includes(filterTerm) ||
+          filterTerm.startsWith('video/')
+        ) {
+          return (
+            canonicalType === 'video' ||
+            catId === 'cat_videos' ||
+            catSlug === 'videos' ||
+            mime.startsWith('video/') ||
+            /\.(mp4|webm|mov|mkv|avi|m4v|mpeg|mpg|wmv|flv)$/i.test(fileName)
+          );
+        }
+
+        // 3. Audio classification matches
+        if (
+          ['audio', 'music', 'sound', 'cat_audio', 'cat_music'].includes(filterTerm) ||
+          filterTerm.startsWith('audio/')
+        ) {
+          return (
+            canonicalType === 'audio' ||
+            catId === 'cat_audio' ||
+            catId === 'cat_music' ||
+            catSlug === 'audio' ||
+            catSlug === 'music' ||
+            mime.startsWith('audio/') ||
+            /\.(mp3|wav|ogg|m4a|aac|flac)$/i.test(fileName)
+          );
+        }
+
+        // 4. Image / Photo classification matches
+        if (
+          ['images', 'image', 'photos', 'photo', 'cat_images', 'cat_photos'].includes(filterTerm) ||
+          filterTerm.startsWith('image/')
+        ) {
+          return (
+            canonicalType === 'image' ||
+            catId === 'cat_images' ||
+            catId === 'cat_photos' ||
+            catSlug === 'images' ||
+            catSlug === 'photos' ||
+            mime.startsWith('image/') ||
+            /\.(jpg|jpeg|png|gif|webp|svg|bmp)$/i.test(fileName)
+          );
+        }
+
+        // 5. Documents classification matches
+        if (
+          ['documents', 'document', 'docs', 'cat_docs'].includes(filterTerm) ||
+          filterTerm.startsWith('application/pdf')
+        ) {
+          return (
+            canonicalType === 'document' ||
+            catId === 'cat_docs' ||
+            catSlug === 'documents' ||
+            mime.includes('pdf') ||
+            mime.includes('document') ||
+            /\.(pdf|doc|docx|txt|md)$/i.test(fileName)
+          );
+        }
+
+        // 6. Apps / Software classification matches
+        if (
+          ['apps', 'app', 'software', 'cat_apps', 'cat_software'].includes(filterTerm)
+        ) {
+          return (
+            canonicalType === 'software' ||
+            catId === 'cat_apps' ||
+            catId === 'cat_software' ||
+            catSlug === 'apps' ||
+            catSlug === 'software'
+          );
+        }
+
+        // 7. Templates classification matches
+        if (['templates', 'template', 'cat_templates'].includes(filterTerm)) {
+          return catId === 'cat_templates' || catSlug === 'templates';
+        }
+
+        // 8. Archives classification matches
+        if (['archives', 'archive', 'cat_archives'].includes(filterTerm)) {
+          return catId === 'cat_archives' || catSlug === 'archives';
+        }
+
+        // 9. Games classification matches
+        if (['games', 'game', 'cat_games'].includes(filterTerm)) {
+          return catId === 'cat_games' || catSlug === 'games';
+        }
+
+        return false;
+      });
     }
 
     if (params.search && params.search.trim()) {
@@ -1054,15 +1339,38 @@ This architectural briefing outlines the zero-latency, cryptographically verifie
       finalThumbnailUrl = 'https://images.unsplash.com/photo-1574717024653-61fd2cf4d44d?q=80&w=800&auto=format&fit=crop';
     }
 
-    const isPublished = typeof fileData.published === 'boolean' 
-      ? fileData.published 
-      : ((fileData as any).status === 'published' || true);
+    // Ensure record is published/visible by default on upload
+    const isPublished = (fileData.published === false || (fileData as any).status === 'draft') ? false : true;
+
+    // Ensure valid category assignment (accepting id, slug, or name)
+    let assignedCat = this.data.categories.find(
+      c => c.id === fileData.categoryId || 
+           c.slug.toLowerCase() === (fileData.categoryId || '').toLowerCase() ||
+           c.name.toLowerCase() === (fileData.categoryId || '').toLowerCase()
+    );
+    if (!assignedCat && isVideo) {
+      assignedCat = this.data.categories.find(c => c.id === 'cat_videos' || c.slug === 'videos');
+    }
+    const assignedCategory = assignedCat?.id || this.data.categories[0]?.id || 'cat_docs';
+
+    // Ensure accurate video mimeType if generic
+    let finalMimeType = fileData.mimeType || 'application/octet-stream';
+    if (isVideo && (finalMimeType === 'application/octet-stream' || !finalMimeType)) {
+      const ext = (fileData.fileName || '').toLowerCase();
+      if (ext.endsWith('.mp4')) finalMimeType = 'video/mp4';
+      else if (ext.endsWith('.webm')) finalMimeType = 'video/webm';
+      else if (ext.endsWith('.mov')) finalMimeType = 'video/quicktime';
+      else if (ext.endsWith('.mkv')) finalMimeType = 'video/x-matroska';
+      else finalMimeType = 'video/mp4';
+    }
 
     const now = new Date().toISOString();
     const newFile: FileResource = {
       ...fileData,
       id: `file_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`,
       slug: finalSlug,
+      categoryId: assignedCategory,
+      mimeType: finalMimeType,
       thumbnailUrl: finalThumbnailUrl,
       published: isPublished,
       downloadCount: 0,

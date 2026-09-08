@@ -51,7 +51,16 @@ export const AdminUpload: React.FC<AdminUploadProps> = ({ onNavigate, onUploaded
           api.getConfig().catch(() => null)
         ]);
         setCategories(cats);
-        if (cats.length > 0 && !categoryId) {
+        if (primaryFile) {
+          const ext = '.' + primaryFile.name.split('.').pop()?.toLowerCase();
+          const videoExts = ['.mp4', '.webm', '.mov', '.mkv', '.avi', '.m4v'];
+          if (videoExts.includes(ext)) {
+            const vidCat = cats.find(c => c.slug === 'videos' || c.id === 'cat_videos');
+            if (vidCat) setCategoryId(vidCat.id);
+          } else if (cats.length > 0 && !categoryId) {
+            setCategoryId(cats[0].id);
+          }
+        } else if (cats.length > 0 && !categoryId) {
           setCategoryId(cats[0].id);
         }
         if (cfg?.maxFileSizeMB) {
@@ -96,7 +105,7 @@ export const AdminUpload: React.FC<AdminUploadProps> = ({ onNavigate, onUploaded
     if (categories.length > 0) {
       const imageExts = ['.jpg', '.jpeg', '.png', '.webp', '.gif', '.svg'];
       const docExts = ['.pdf', '.doc', '.docx', '.txt', '.csv', '.md', '.xls', '.xlsx', '.ppt', '.pptx'];
-      const videoExts = ['.mp4', '.webm'];
+      const videoExts = ['.mp4', '.webm', '.mov', '.mkv', '.avi', '.m4v'];
       const audioExts = ['.mp3', '.wav'];
       const archiveExts = ['.zip', '.rar', '.7z'];
       const templateExts = ['.json'];

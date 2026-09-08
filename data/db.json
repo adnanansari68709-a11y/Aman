@@ -133,6 +133,76 @@
   ],
   "files": [
     {
+      "title": "Velora Sovereign Motion Reel 2026",
+      "description": "Audit verification MP4 video asset.",
+      "categoryId": "cat_videos",
+      "fileUrl": "/api/public/files/raw/files/1788853163659_6y86dn_test_video_audit.mp4",
+      "storagePath": "files/1788853163659_6y86dn_test_video_audit.mp4",
+      "thumbnailUrl": "https://images.unsplash.com/photo-1574717024653-61fd2cf4d44d?q=80&w=800&auto=format&fit=crop",
+      "fileName": "test_video_audit.mp4",
+      "mimeType": "video/mp4",
+      "fileSize": 44,
+      "version": "1.0.0",
+      "tags": [
+        "audit",
+        "motion",
+        "sovereign"
+      ],
+      "featured": true,
+      "published": true,
+      "id": "file_1788853163660_ktvwr4",
+      "slug": "velora-sovereign-motion-reel-2026",
+      "downloadCount": 0,
+      "createdAt": "2026-09-08T07:39:23.660Z",
+      "updatedAt": "2026-09-08T07:39:23.660Z"
+    },
+    {
+      "title": "VID 20260906 WA0007",
+      "description": "Moj masti",
+      "categoryId": "cat_videos",
+      "fileUrl": "/api/public/files/raw/files/1788851204393_guw8ly_VID-20260906-WA0007.mp4",
+      "storagePath": "files/1788851204393_guw8ly_VID-20260906-WA0007.mp4",
+      "thumbnailUrl": "https://images.unsplash.com/photo-1574717024653-61fd2cf4d44d?q=80&w=800&auto=format&fit=crop",
+      "fileName": "VID-20260906-WA0007.mp4",
+      "mimeType": "video/mp4",
+      "fileSize": 1897473,
+      "version": "1.0.0",
+      "tags": [
+        "Clinic"
+      ],
+      "featured": false,
+      "published": true,
+      "id": "file_1788851204396_jsv21h",
+      "slug": "vid-20260906-wa0007",
+      "downloadCount": 0,
+      "createdAt": "2026-09-08T07:06:44.396Z",
+      "updatedAt": "2026-09-08T07:06:44.396Z"
+    },
+    {
+      "title": "Cinematic Drone Reel 2026",
+      "description": "4K aerial capture over sovereign Alpine peaks.",
+      "categoryId": "cat_videos",
+      "fileUrl": "/api/public/files/raw/files/1788806877220_zud2yg_drone_reel_test.mp4",
+      "storagePath": "files/1788806877220_zud2yg_drone_reel_test.mp4",
+      "thumbnailUrl": "https://images.unsplash.com/photo-1574717024653-61fd2cf4d44d?q=80&w=800&auto=format&fit=crop",
+      "fileName": "drone_reel_test.mp4",
+      "mimeType": "video/mp4",
+      "fileSize": 40,
+      "version": "1.0.0",
+      "tags": [
+        "drone",
+        "4k",
+        "cinematography"
+      ],
+      "featured": false,
+      "published": true,
+      "id": "file_1788806877221_ptyf4t",
+      "slug": "cinematic-drone-reel-2026",
+      "downloadCount": 0,
+      "createdAt": "2026-09-07T18:47:57.221Z",
+      "updatedAt": "2026-09-07T18:47:57.221Z"
+    },
+    {
       "title": "Velora Production Keynote 2026",
       "description": "High-definition 17.8MB MP4 demonstration asset",
       "categoryId": "cat_videos",
@@ -170,12 +240,12 @@
       "version": "1.0.0",
       "tags": [],
       "featured": false,
-      "published": false,
+      "published": true,
       "id": "file_1788630286170_4rvego",
       "slug": "sample-video-asset",
       "downloadCount": 0,
       "createdAt": "2026-09-05T17:44:46.170Z",
-      "updatedAt": "2026-09-05T17:44:46.170Z"
+      "updatedAt": "2026-09-07T18:42:11.405Z"
     },
     {
       "id": "file_blueprint_01",

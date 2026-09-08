@@ -27,6 +27,7 @@ export interface FileResource {
   fileName: string;
   mimeType: string;
   type?: string;
+  format?: string;
   fileSize: number; // in bytes
   version?: string;
   tags: string[];

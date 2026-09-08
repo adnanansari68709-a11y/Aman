@@ -115,7 +115,11 @@ export const FileCard: React.FC<FileCardProps> = ({
       {(() => {
         const thumb = file.thumbnailUrl || (file as any).thumbnail;
         const isVideo = (file.mimeType && file.mimeType.startsWith('video/')) || 
-          (file.fileName && /\.(mp4|webm|mov|mkv)$/i.test(file.fileName));
+          (file.fileName && /\.(mp4|webm|mov|mkv|avi|m4v)$/i.test(file.fileName)) ||
+          file.type === 'video' ||
+          ((file as any).type && (file as any).type.startsWith('video/')) ||
+          file.categorySlug === 'videos' ||
+          file.categoryId === 'cat_videos';
         const finalThumb = thumb || (isVideo ? 'https://images.unsplash.com/photo-1574717024653-61fd2cf4d44d?q=80&w=800&auto=format&fit=crop' : '');
 
         return (

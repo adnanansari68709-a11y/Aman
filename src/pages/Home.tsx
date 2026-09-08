@@ -98,23 +98,28 @@ export const Home: React.FC<HomeProps> = ({
   const [premiumModalOpen, setPremiumModalOpen] = useState(false);
 
   useEffect(() => {
+    let active = true;
+
     async function loadHomeData() {
       try {
         const [featRes, latestRes, statsRes] = await Promise.all([
-          api.getFiles({ featured: true, limit: 8 }),
-          api.getFiles({ sort: 'latest', limit: 8 }),
+          api.getFiles({ featured: true, limit: 12 }),
+          api.getFiles({ sort: 'latest', limit: 12 }),
           api.getPublicStats()
         ]);
 
+        if (!active) return;
+
         const feat = featRes?.files || [];
         const latest = latestRes?.files || [];
+        // Prioritize latest uploaded resources first, then deduplicate and include featured items
         const combined: FileResource[] = [...latest];
         for (const item of feat) {
           if (!combined.some(c => c.id === item.id)) {
             combined.push(item);
           }
         }
-        setFeaturedFiles(combined.slice(0, 8));
+        setFeaturedFiles(combined.slice(0, 12));
         if (statsRes) {
           setStats({
             totalFiles: statsRes.totalFiles || 12450,
@@ -126,11 +131,26 @@ export const Home: React.FC<HomeProps> = ({
       } catch (err) {
         console.error('Failed to load home data:', err);
       } finally {
-        setLoading(false);
+        if (active) setLoading(false);
       }
     }
 
     loadHomeData();
+
+    // Auto-refresh when tab/window regains focus or visibility (e.g. after uploading in admin tab or refreshing on phone)
+    const handleRefresh = () => {
+      if (document.visibilityState === 'visible') {
+        loadHomeData();
+      }
+    };
+    window.addEventListener('focus', handleRefresh);
+    document.addEventListener('visibilitychange', handleRefresh);
+
+    return () => {
+      active = false;
+      window.removeEventListener('focus', handleRefresh);
+      document.removeEventListener('visibilitychange', handleRefresh);
+    };
   }, []);
 
   return (

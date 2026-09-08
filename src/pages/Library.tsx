@@ -26,6 +26,7 @@ export const Library: React.FC<LibraryProps> = ({
   const [files, setFiles] = useState<FileResource[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [total, setTotal] = useState(0);
+  const [allSectorsCount, setAllSectorsCount] = useState(0);
   const [totalPages, setTotalPages] = useState(1);
   const [loading, setLoading] = useState(true);
 
@@ -69,6 +70,7 @@ export const Library: React.FC<LibraryProps> = ({
       try {
         const res = await api.getFiles({
           category: selectedCategory || undefined,
+          categorySlug: selectedCategory || undefined,
           search: search.trim() || undefined,
           sort,
           page,
@@ -78,6 +80,9 @@ export const Library: React.FC<LibraryProps> = ({
         if (!cancelled) {
           setFiles(res?.files || []);
           setTotal(res?.total || 0);
+          if (!selectedCategory && !search.trim()) {
+            setAllSectorsCount(res?.total || 0);
+          }
           setTotalPages(res?.totalPages || 1);
         }
       } catch (err) {
@@ -198,7 +203,7 @@ export const Library: React.FC<LibraryProps> = ({
               : 'bg-white/5 border border-white/10 text-zinc-300 hover:border-[#D4AF37]/40 hover:text-white'
           }`}
         >
-          All Sectors ({total})
+          All Sectors ({allSectorsCount > 0 ? allSectorsCount : total})
         </button>
         {(categories || []).map((cat) => {
           const isSelected = selectedCategory.toLowerCase() === cat.slug.toLowerCase();

@@ -197,7 +197,8 @@ export function createApiApp() {
   });
 
   router.get('/public/categories', (req: Request, res: Response) => {
-    const categories = db.getAllCategories(false);
+    const categories = db.getAllCategories(true);
+    res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate, max-age=0');
     res.json({ success: true, data: categories });
   });
 
@@ -236,19 +237,29 @@ export function createApiApp() {
     return fileStream.stream.pipe(res);
   }
 
-  router.get('/public/files', (req: Request, res: Response) => {
-    const { category, categorySlug, search, sort, page, limit, featured } = req.query;
+  router.get('/public/files', async (req: Request, res: Response) => {
+    db.refreshIfStale();
+    if (process.env.NETLIFY || process.env.AWS_LAMBDA_FUNCTION_NAME || process.env.LAMBDA_TASK_ROOT) {
+      await db.syncFromNetlifyBlobs().catch(() => {});
+    }
+    const { category, categorySlug, type, format, search, sort, page, limit, featured } = req.query;
     const result = db.getFiles({
       publishedOnly: true,
+      category: (category || categorySlug || type || format) as string,
       categoryId: category as string,
-      categorySlug: categorySlug as string,
+      categorySlug: (categorySlug || category) as string,
+      type: (type || category) as string,
+      format: (format || type) as string,
       search: search as string,
       sort: sort as string,
       featured: featured === 'true' ? true : featured === 'false' ? false : undefined,
       page: page ? parseInt(page as string, 10) : 1,
       limit: limit ? parseInt(limit as string, 10) : 12
     });
-    res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+    res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate, max-age=0');
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('Expires', '0');
+    res.setHeader('Surrogate-Control', 'no-store');
     res.json({
       success: true,
       data: result.files,
@@ -270,7 +281,10 @@ export function createApiApp() {
     const related = db.getFiles({ publishedOnly: true, categoryId: file.categoryId, limit: 5 }).files
       .filter(f => f.id !== file.id)
       .slice(0, 4);
-    res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+    res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate, max-age=0');
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('Expires', '0');
+    res.setHeader('Surrogate-Control', 'no-store');
     res.json({
       success: true,
       data: {
@@ -283,7 +297,7 @@ export function createApiApp() {
     });
   });
 
-  router.get('/public/files/:id/download', (req: Request, res: Response) => {
+  router.get('/public/files/:id/download', async (req: Request, res: Response) => {
     const { id } = req.params;
     let file = db.getFileById(id);
     if (!file) {
@@ -298,7 +312,11 @@ export function createApiApp() {
     db.incrementDownload(file.id, clientIp, userAgent);
 
     if (file.storagePath) {
-      const fileStream = storage.getFileStream(file.storagePath);
+      let fileStream = storage.getFileStream(file.storagePath);
+      if (!fileStream) {
+        await storage.ensureFileOnDisk(file.storagePath);
+        fileStream = storage.getFileStream(file.storagePath);
+      }
       if (fileStream) {
         return serveFileStream(req, res, fileStream, 'attachment', file.fileName);
       }
@@ -311,7 +329,7 @@ export function createApiApp() {
     res.status(404).json({ success: false, error: 'Physical archive resource unavailable on storage node.' });
   });
 
-  router.get('/public/files/:id/preview', (req: Request, res: Response) => {
+  router.get('/public/files/:id/preview', async (req: Request, res: Response) => {
     const { id } = req.params;
     let file = db.getFileById(id);
     if (!file) {
@@ -322,7 +340,11 @@ export function createApiApp() {
     }
 
     if (file.storagePath) {
-      const fileStream = storage.getFileStream(file.storagePath);
+      let fileStream = storage.getFileStream(file.storagePath);
+      if (!fileStream) {
+        await storage.ensureFileOnDisk(file.storagePath);
+        fileStream = storage.getFileStream(file.storagePath);
+      }
       if (fileStream) {
         return serveFileStream(req, res, fileStream, 'inline', file.fileName);
       }
@@ -335,13 +357,17 @@ export function createApiApp() {
     res.status(404).json({ success: false, error: 'Preview content unavailable.' });
   });
 
-  router.get('/public/files/raw/*', (req: Request, res: Response) => {
+  router.get('/public/files/raw/*', async (req: Request, res: Response) => {
     const rawPath = req.params[0];
     if (!rawPath) {
       return res.status(400).json({ success: false, error: 'Invalid file path.' });
     }
 
-    const fileStream = storage.getFileStream(rawPath);
+    let fileStream = storage.getFileStream(rawPath);
+    if (!fileStream) {
+      await storage.ensureFileOnDisk(rawPath);
+      fileStream = storage.getFileStream(rawPath);
+    }
     if (!fileStream) {
       return res.status(404).json({ success: false, error: 'Raw resource not located in storage system.' });
     }
@@ -432,10 +458,14 @@ export function createApiApp() {
   });
 
   router.get('/admin/files', requireAdminAuth, (req: AuthenticatedRequest, res: Response) => {
-    const { category, search, sort, page, limit } = req.query;
+    const { category, categorySlug, type, format, search, sort, page, limit } = req.query;
     const result = db.getFiles({
       publishedOnly: false,
+      category: (category || categorySlug || type || format) as string,
       categoryId: category as string,
+      categorySlug: (categorySlug || category) as string,
+      type: (type || category) as string,
+      format: (format || type) as string,
       search: search as string,
       sort: sort as string,
       page: page ? parseInt(page as string, 10) : 1,
@@ -521,6 +551,8 @@ export function createApiApp() {
           featured: featured === 'true' || featured === true,
           published: (published === 'false' || published === false) ? false : true
         });
+
+        await db.saveDatabaseAsync();
 
         res.status(201).json({ success: true, data: newResource });
       } catch (err: any) {
@@ -671,6 +703,8 @@ export function createApiApp() {
           published: (published === 'false' || published === false) ? false : true
         });
 
+        await db.saveDatabaseAsync();
+
         res.status(201).json({ success: true, data: newResource });
       } catch (err: any) {
         console.error('Finalize chunked upload error:', err);
@@ -679,7 +713,7 @@ export function createApiApp() {
     }
   );
 
-  router.put('/admin/files/:id', requireAdminAuth, (req: AuthenticatedRequest, res: Response) => {
+  router.put('/admin/files/:id', requireAdminAuth, async (req: AuthenticatedRequest, res: Response) => {
     const { id } = req.params;
     const { title, description, categoryId, tags, version, featured, published, thumbnailUrl } = req.body;
 
@@ -714,6 +748,8 @@ export function createApiApp() {
       featured: featured !== undefined ? Boolean(featured) : existing.featured,
       published: published !== undefined ? Boolean(published) : existing.published
     });
+
+    await db.saveDatabaseAsync();
 
     res.json({ success: true, data: updated });
   });
@@ -826,24 +862,28 @@ export function createApiApp() {
       return res.status(404).json({ success: false, error: 'Resource not found or already deleted.' });
     }
 
+    await db.saveDatabaseAsync();
+
     res.json({ success: true, message: 'Resource permanently purged from database and storage.' });
   });
 
-  router.patch('/admin/files/:id/toggle-featured', requireAdminAuth, (req: AuthenticatedRequest, res: Response) => {
+  router.patch('/admin/files/:id/toggle-featured', requireAdminAuth, async (req: AuthenticatedRequest, res: Response) => {
     const { id } = req.params;
     const file = db.getFileById(id);
     if (!file) return res.status(404).json({ success: false, error: 'Resource not found.' });
 
     const updated = db.updateFile(id, { featured: !file.featured });
+    await db.saveDatabaseAsync();
     res.json({ success: true, data: updated });
   });
 
-  router.patch('/admin/files/:id/toggle-published', requireAdminAuth, (req: AuthenticatedRequest, res: Response) => {
+  router.patch('/admin/files/:id/toggle-published', requireAdminAuth, async (req: AuthenticatedRequest, res: Response) => {
     const { id } = req.params;
     const file = db.getFileById(id);
     if (!file) return res.status(404).json({ success: false, error: 'Resource not found.' });
 
     const updated = db.updateFile(id, { published: !file.published });
+    await db.saveDatabaseAsync();
     res.json({ success: true, data: updated });
   });
 

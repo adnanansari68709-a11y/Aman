@@ -5,7 +5,7 @@
  * Update this URL or username here whenever required.
  */
 
-export const INSTAGRAM_PROFILE_URL = "https://www.instagram.com/aman_ansari__09/";
+export const INSTAGRAM_PROFILE_URL = "https://www.instagram.com/aman_ansari__09?stkn=ZDcyMjNyZXdtdTVq";
 export const INSTAGRAM_USERNAME = "@aman_ansari__09";
 
 export const SOCIAL_CONFIG = {

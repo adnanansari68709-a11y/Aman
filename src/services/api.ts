@@ -35,9 +35,14 @@ class ApiService {
   }
 
   private async request<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
+    const isGet = !options.method || options.method.toUpperCase() === 'GET';
+    const separator = endpoint.includes('?') ? '&' : '?';
+    const cleanEndpoint = isGet ? `${endpoint}${separator}_t=${Date.now()}` : endpoint;
+
     const headers: Record<string, string> = {
-      'Cache-Control': 'no-cache',
+      'Cache-Control': 'no-cache, no-store, must-revalidate',
       'Pragma': 'no-cache',
+      'Expires': '0',
       ...(options.headers as Record<string, string> || {})
     };
 
@@ -50,11 +55,12 @@ class ApiService {
       headers['Content-Type'] = 'application/json';
     }
 
-    const url = endpoint.startsWith('http://') || endpoint.startsWith('https://')
-      ? endpoint
-      : `${this.baseUrl}${endpoint.startsWith('/') ? endpoint : `/${endpoint}`}`;
+    const url = cleanEndpoint.startsWith('http://') || cleanEndpoint.startsWith('https://')
+      ? cleanEndpoint
+      : `${this.baseUrl}${cleanEndpoint.startsWith('/') ? cleanEndpoint : `/${cleanEndpoint}`}`;
 
     const res = await fetch(url, {
+      cache: 'no-store',
       ...options,
       headers
     });
@@ -117,6 +123,8 @@ class ApiService {
   public async getFiles(params: {
     category?: string;
     categorySlug?: string;
+    type?: string;
+    format?: string;
     search?: string;
     sort?: string;
     page?: number;
@@ -129,8 +137,13 @@ class ApiService {
     totalPages: number;
   }> {
     const query = new URLSearchParams();
-    if (params.category) query.set('category', params.category);
+    if (params.category) {
+      query.set('category', params.category);
+      if (!params.categorySlug) query.set('categorySlug', params.category);
+    }
     if (params.categorySlug) query.set('categorySlug', params.categorySlug);
+    if (params.type) query.set('type', params.type);
+    if (params.format) query.set('format', params.format);
     if (params.search) query.set('search', params.search);
     if (params.sort) query.set('sort', params.sort);
     if (params.page) query.set('page', String(params.page));

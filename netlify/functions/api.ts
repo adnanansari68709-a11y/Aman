@@ -1,9 +1,17 @@
 import serverless from 'serverless-http';
 import { createApiApp } from '../../src/server/app';
 
+let netlifyBlobsModule: any = null;
+try {
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  netlifyBlobsModule = require('@netlify/blobs');
+} catch {
+  // optional
+}
+
 const app = createApiApp();
 
-export const handler = serverless(app, {
+const serverlessHandler = serverless(app, {
   binary: [
     'image/*',
     'video/*',
@@ -14,3 +22,14 @@ export const handler = serverless(app, {
     'application/x-zip-compressed'
   ]
 });
+
+export const handler = async (event: any, context: any) => {
+  if (event && netlifyBlobsModule && typeof netlifyBlobsModule.connectLambda === 'function') {
+    try {
+      netlifyBlobsModule.connectLambda(event);
+    } catch (e) {
+      console.warn('Notice: connectLambda error:', e);
+    }
+  }
+  return serverlessHandler(event, context);
+};

@@ -151,8 +151,8 @@ export const FileDetail: React.FC<FileDetailProps> = ({
 
   const ext = getFileExtension(file.fileName).toLowerCase();
   const isImage = ['jpg', 'jpeg', 'png', 'webp', 'gif', 'svg'].includes(ext) || (file.mimeType && file.mimeType.startsWith('image/'));
-  const isAudio = ['mp3', 'wav', 'ogg', 'aac'].includes(ext) || (file.mimeType && file.mimeType.startsWith('audio/'));
-  const isVideo = ['mp4', 'webm', 'mov', 'mkv', 'avi'].includes(ext) || (file.mimeType && file.mimeType.startsWith('video/'));
+  const isAudio = ['mp3', 'wav', 'ogg', 'aac'].includes(ext) || (file.mimeType && file.mimeType.startsWith('audio/')) || file.type === 'audio';
+  const isVideo = ['mp4', 'webm', 'mov', 'mkv', 'avi'].includes(ext) || (file.mimeType && file.mimeType.startsWith('video/')) || file.type === 'video' || file.categoryId === 'cat_videos' || file.categorySlug === 'videos';
   const isPdf = ext === 'pdf' || file.mimeType === 'application/pdf';
   const isText = ['txt', 'csv', 'json', 'md'].includes(ext) || (file.mimeType && file.mimeType.startsWith('text/'));
   const thumb = file.thumbnailUrl || (file as any).thumbnail;

@@ -13,10 +13,19 @@ try {
 
 function getNetlifyBlobStore(storeName: string) {
   if (!netlifyBlobsModule || typeof netlifyBlobsModule.getStore !== 'function') return null;
+  const siteID = process.env.NETLIFY_SITE_ID || process.env.SITE_ID;
+  const token = process.env.NETLIFY_BLOBS_TOKEN || process.env.NETLIFY_AUTH_TOKEN || process.env.NETLIFY_API_TOKEN;
   try {
-    return netlifyBlobsModule.getStore(storeName);
+    if (siteID && token) {
+      return netlifyBlobsModule.getStore({ name: storeName, siteID, token, consistency: 'strong' });
+    }
+    return netlifyBlobsModule.getStore({ name: storeName, consistency: 'strong' });
   } catch {
-    return null;
+    try {
+      return netlifyBlobsModule.getStore(storeName);
+    } catch {
+      return null;
+    }
   }
 }
 
@@ -31,6 +40,7 @@ export interface SavedFileInfo {
 export interface IStorageProvider {
   saveFile(file: Express.Multer.File, subFolder?: string): Promise<SavedFileInfo>;
   getFileStream(storagePath: string): { stream: Readable; size: number; mimeType: string; fullPath?: string } | null;
+  ensureFileOnDisk(storagePath: string): Promise<string | null>;
   deleteFile(storagePath: string): Promise<boolean>;
   fileExists(storagePath: string): boolean;
   saveBuffer(buffer: Buffer, fileName: string, mimeType: string, subFolder?: string): Promise<SavedFileInfo>;
@@ -106,17 +116,15 @@ export class LocalStorageProvider implements IStorageProvider {
     const relativePath = path.join(subFolder, uniqueName);
     const normalizedRelative = relativePath.replace(/\\/g, '/');
 
-    // Asynchronously synchronize to Netlify Blobs if store is active
+    // Synchronize to Netlify Blobs if store is active
     if (fileBuffer) {
       try {
         const store = getNetlifyBlobStore('velora-files');
         if (store) {
-          store.set(normalizedRelative, fileBuffer).catch((err: any) => {
-            console.warn('Netlify Blobs sync notification:', err?.message || err);
-          });
+          await store.set(normalizedRelative, fileBuffer);
         }
-      } catch {
-        // ignore
+      } catch (err: any) {
+        console.warn('Netlify Blobs sync notification:', err?.message || err);
       }
     }
 
@@ -145,12 +153,10 @@ export class LocalStorageProvider implements IStorageProvider {
     try {
       const store = getNetlifyBlobStore('velora-files');
       if (store) {
-        store.set(normalizedRelative, buffer).catch((err: any) => {
-          console.warn('Netlify Blobs sync notification:', err?.message || err);
-        });
+        await store.set(normalizedRelative, buffer);
       }
-    } catch {
-      // ignore
+    } catch (err: any) {
+      console.warn('Netlify Blobs sync notification:', err?.message || err);
     }
 
     return {
@@ -162,6 +168,59 @@ export class LocalStorageProvider implements IStorageProvider {
     };
   }
 
+  public async ensureFileOnDisk(storagePath: string): Promise<string | null> {
+    let fullPath = path.isAbsolute(storagePath) ? storagePath : path.join(this.baseDir, storagePath);
+    if (fs.existsSync(fullPath)) return fullPath;
+
+    const candidatePaths = [
+      path.join(process.cwd(), 'data', 'uploads', storagePath),
+      path.join(process.cwd(), 'data', 'uploads', 'files', path.basename(storagePath)),
+      path.join(process.cwd(), 'data', 'uploads', 'thumbnails', path.basename(storagePath)),
+      path.join(process.cwd(), 'storage', storagePath),
+      path.join(process.cwd(), 'storage', 'files', path.basename(storagePath)),
+      path.join(process.cwd(), 'storage', 'thumbnails', path.basename(storagePath)),
+      path.join('/tmp', 'uploads', storagePath),
+      path.join('/tmp', 'uploads', 'files', path.basename(storagePath)),
+      path.join('/tmp', 'uploads', 'thumbnails', path.basename(storagePath))
+    ];
+
+    if (process.env.LAMBDA_TASK_ROOT) {
+      candidatePaths.push(
+        path.join(process.env.LAMBDA_TASK_ROOT, 'data', 'uploads', storagePath),
+        path.join(process.env.LAMBDA_TASK_ROOT, 'data', 'uploads', 'files', path.basename(storagePath)),
+        path.join(process.env.LAMBDA_TASK_ROOT, 'data', 'uploads', 'thumbnails', path.basename(storagePath)),
+        path.join(process.env.LAMBDA_TASK_ROOT, 'storage', storagePath),
+        path.join(process.env.LAMBDA_TASK_ROOT, 'storage', 'files', path.basename(storagePath)),
+        path.join(process.env.LAMBDA_TASK_ROOT, 'storage', 'thumbnails', path.basename(storagePath))
+      );
+    }
+
+    for (const p of candidatePaths) {
+      if (fs.existsSync(p)) {
+        return p;
+      }
+    }
+
+    // Try to fetch from Netlify Blobs
+    try {
+      const store = getNetlifyBlobStore('velora-files');
+      if (store) {
+        const normalized = storagePath.replace(/\\/g, '/');
+        const data = await store.get(normalized, { type: 'arrayBuffer' });
+        if (data) {
+          const target = path.isAbsolute(storagePath) ? storagePath : path.join(this.baseDir, storagePath);
+          this.ensureDirectory(path.dirname(target));
+          fs.writeFileSync(target, Buffer.from(data));
+          return target;
+        }
+      }
+    } catch (err) {
+      console.warn('Notice: Netlify Blobs restore fallback skipped:', err);
+    }
+
+    return null;
+  }
+
   public getFileStream(storagePath: string): { stream: Readable; size: number; mimeType: string; fullPath?: string } | null {
     let fullPath = path.isAbsolute(storagePath) ? storagePath : path.join(this.baseDir, storagePath);
     if (!fs.existsSync(fullPath)) {
@@ -169,6 +228,9 @@ export class LocalStorageProvider implements IStorageProvider {
         path.join(process.cwd(), 'data', 'uploads', storagePath),
         path.join(process.cwd(), 'data', 'uploads', 'files', path.basename(storagePath)),
         path.join(process.cwd(), 'data', 'uploads', 'thumbnails', path.basename(storagePath)),
+        path.join(process.cwd(), 'storage', storagePath),
+        path.join(process.cwd(), 'storage', 'files', path.basename(storagePath)),
+        path.join(process.cwd(), 'storage', 'thumbnails', path.basename(storagePath)),
         path.join('/tmp', 'uploads', storagePath),
         path.join('/tmp', 'uploads', 'files', path.basename(storagePath)),
         path.join('/tmp', 'uploads', 'thumbnails', path.basename(storagePath))
@@ -178,7 +240,10 @@ export class LocalStorageProvider implements IStorageProvider {
         candidatePaths.push(
           path.join(process.env.LAMBDA_TASK_ROOT, 'data', 'uploads', storagePath),
           path.join(process.env.LAMBDA_TASK_ROOT, 'data', 'uploads', 'files', path.basename(storagePath)),
-          path.join(process.env.LAMBDA_TASK_ROOT, 'data', 'uploads', 'thumbnails', path.basename(storagePath))
+          path.join(process.env.LAMBDA_TASK_ROOT, 'data', 'uploads', 'thumbnails', path.basename(storagePath)),
+          path.join(process.env.LAMBDA_TASK_ROOT, 'storage', storagePath),
+          path.join(process.env.LAMBDA_TASK_ROOT, 'storage', 'files', path.basename(storagePath)),
+          path.join(process.env.LAMBDA_TASK_ROOT, 'storage', 'thumbnails', path.basename(storagePath))
         );
       }
 
@@ -244,6 +309,12 @@ export class LocalStorageProvider implements IStorageProvider {
     if (fs.existsSync(alt2)) return alt2;
     const alt3 = path.join(process.cwd(), 'data', 'uploads', 'thumbnails', path.basename(storagePath));
     if (fs.existsSync(alt3)) return alt3;
+    const alt4 = path.join(process.cwd(), 'storage', storagePath);
+    if (fs.existsSync(alt4)) return alt4;
+    const alt5 = path.join(process.cwd(), 'storage', 'files', path.basename(storagePath));
+    if (fs.existsSync(alt5)) return alt5;
+    const alt6 = path.join(process.cwd(), 'storage', 'thumbnails', path.basename(storagePath));
+    if (fs.existsSync(alt6)) return alt6;
     return candidate;
   }
 
@@ -253,6 +324,13 @@ export class LocalStorageProvider implements IStorageProvider {
     this.ensureDirectory(chunkDir);
     const chunkFile = path.join(chunkDir, `part_${chunkIndex}`);
     fs.writeFileSync(chunkFile, buffer);
+
+    try {
+      const store = getNetlifyBlobStore('velora-files');
+      if (store) {
+        await store.set(`_chunks/${sanitizedId}/part_${chunkIndex}`, buffer);
+      }
+    } catch {}
   }
 
   public getExistingChunks(uploadId: string): number[] {
@@ -293,7 +371,19 @@ export class LocalStorageProvider implements IStorageProvider {
 
     // Sequentially append each chunk buffer to guarantee atomic assembly without stream buffering race conditions
     for (let i = 0; i < totalChunks; i++) {
-      const partPath = path.join(chunkDir, `part_${i}`);
+      let partPath = path.join(chunkDir, `part_${i}`);
+      if (!fs.existsSync(partPath)) {
+        try {
+          const store = getNetlifyBlobStore('velora-files');
+          if (store) {
+            const chunkBuf = await store.get(`_chunks/${sanitizedId}/part_${i}`, { type: 'arrayBuffer' });
+            if (chunkBuf) {
+              this.ensureDirectory(chunkDir);
+              fs.writeFileSync(partPath, Buffer.from(chunkBuf));
+            }
+          }
+        } catch {}
+      }
       if (!fs.existsSync(partPath)) {
         try { if (fs.existsSync(targetPath)) fs.unlinkSync(targetPath); } catch {}
         throw new Error(`Upload payload chunk ${i} of ${totalChunks} was not found on storage.`);
@@ -320,12 +410,10 @@ export class LocalStorageProvider implements IStorageProvider {
       const store = getNetlifyBlobStore('velora-files');
       if (store) {
         const fullBuf = fs.readFileSync(targetPath);
-        store.set(normalizedRelative, fullBuf).catch((err: any) => {
-          console.warn('Netlify Blobs sync notification for assembled file:', err?.message || err);
-        });
+        await store.set(normalizedRelative, fullBuf);
       }
-    } catch {
-      // ignore
+    } catch (err: any) {
+      console.warn('Netlify Blobs sync notification for assembled file:', err?.message || err);
     }
 
     return {
