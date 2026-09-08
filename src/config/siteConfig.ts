@@ -24,11 +24,11 @@ export interface SiteConfig {
 }
 
 export const siteConfig: SiteConfig = {
-  siteName: "VELORA",
+  siteName: "AMANX ARCHIVE",
   tagline: "Premium Digital Resources. One Powerful Library.",
-  description: "Your premium destination for curated digital resources, high-grade developer toolkits, design templates, and verified files.",
+  description: "AMANX ARCHIVE is a premium digital resource library for discovering, viewing and downloading curated digital resources.",
   siteUrl: process.env.APP_URL || "https://velora-digital-archive.netlify.app",
-  contactEmail: "concierge@velora.digital",
+  contactEmail: "concierge@amanx.archive",
   defaultCategory: "documents",
   maxFileSizeMB: Number(process.env.MAX_FILE_SIZE_MB) || 100,
   allowedFileTypes: [
@@ -64,13 +64,13 @@ export const siteConfig: SiteConfig = {
     { extension: ".md", mime: "text/markdown", category: "documents", label: "Markdown Guide" }
   ],
   brand: {
-    logoText: "VELORA",
-    logoMark: "V",
+    logoText: "AMANX",
+    logoMark: "A/X",
     accentColor: "#d4af37",
     primaryDark: "#08080a",
     secondaryDark: "#121216",
     copyrightYear: 2026,
-    ownerName: "VELORA Core Administration"
+    ownerName: "AMANX Core Administration"
   }
 };
 

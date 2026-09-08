@@ -177,7 +177,7 @@ export const FileCard: React.FC<FileCardProps> = ({
 
       {/* Description */}
       <p className="text-zinc-400 text-xs font-light leading-relaxed mb-4 line-clamp-2">
-        {file.description || 'Verified cryptographic asset stored in the VELORA primary archive.'}
+        {file.description || 'Verified cryptographic asset stored in the AMANX ARCHIVE primary vault.'}
       </p>
 
       {/* Card Footer with Download Counter and Action Button */}

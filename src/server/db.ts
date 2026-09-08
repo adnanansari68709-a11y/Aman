@@ -239,7 +239,7 @@ export class JsonDatabase {
       this.data.admins.push({
         id: 'admin_primary_01',
         email: envAdminEmail,
-        name: 'Velora Master Admin',
+        name: 'AMANX Master Admin',
         passwordHash: '',
         createdAt: new Date().toISOString()
       });
@@ -782,7 +782,7 @@ This architectural briefing outlines the zero-latency, cryptographically verifie
       admin = {
         id: 'admin_primary_01',
         email: targetEmail,
-        name: 'Velora Master Admin',
+        name: 'AMANX Master Admin',
         passwordHash: '',
         createdAt: new Date().toISOString()
       };

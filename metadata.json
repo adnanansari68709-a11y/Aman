@@ -1,6 +1,6 @@
 {
-  "name": "VELORA - Premium Digital Library",
-  "description": "VELORA is a luxury digital file library for premium software, design templates, high-resolution media, documentation, and digital assets.",
+  "name": "AMANX ARCHIVE — Premium Digital Resources",
+  "description": "AMANX ARCHIVE is a premium digital resource library for discovering, viewing and downloading curated digital resources.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

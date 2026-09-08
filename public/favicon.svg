@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" fill="none">
+  <rect width="32" height="32" rx="8" fill="#08090d"/>
+  <rect x="0.5" y="0.5" width="31" height="31" rx="7.5" stroke="#d4af37" stroke-opacity="0.4"/>
+  <defs>
+    <linearGradient id="g" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#FFF7D6"/>
+      <stop offset="50%" stop-color="#D4AF37"/>
+      <stop offset="100%" stop-color="#9A7620"/>
+    </linearGradient>
+  </defs>
+  <!-- Architectural 'A' Spire Pylons -->
+  <path d="M16 4.5 L6 27.5" stroke="url(#g)" stroke-width="2.2" stroke-linecap="round"/>
+  <path d="M16 4.5 L26 27.5" stroke="url(#g)" stroke-width="2.2" stroke-linecap="round"/>
+  <!-- 'A' Crossbar -->
+  <path d="M10.2 19 L21.8 19" stroke="url(#g)" stroke-width="1.8" stroke-linecap="round"/>
+  <!-- Intersecting 'X' Diagonal Wings -->
+  <path d="M8 8.5 L24 27" stroke="url(#g)" stroke-width="2.2" stroke-linecap="round"/>
+  <path d="M24 8.5 L8 27" stroke="url(#g)" stroke-width="2.2" stroke-linecap="round"/>
+  <!-- Center Vault Diamond Core -->
+  <polygon points="16,14.5 18.5,17.5 16,20.5 13.5,17.5" fill="#FFF7D6"/>
+</svg>

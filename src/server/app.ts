@@ -146,7 +146,7 @@ export function createApiApp() {
   router.get('/health', (req: Request, res: Response) => {
     res.json({
       status: 'ok',
-      service: 'Velora Digital Archive API',
+      service: 'AMANX ARCHIVE API',
       timestamp: new Date().toISOString()
     });
   });

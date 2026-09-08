@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Search, Menu, X, ArrowRight, User, Shield } from 'lucide-react';
 import { AdminUser } from '../types';
+import { AmanxLogo } from './AmanxLogo';
 
 interface HeaderProps {
   currentRoute: string;
@@ -35,27 +36,14 @@ export const Header: React.FC<HeaderProps> = ({
     <header className="sticky top-0 z-50 w-full border-b border-white/[0.08] bg-[#060709]/90 backdrop-blur-xl transition-all">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 sm:h-18 flex items-center justify-between gap-3 sm:gap-4">
         
-        {/* Brand: Velora V logo + VELORA DIGITAL ARCHIVE */}
+        {/* Brand: AMANX ARCHIVE A/X Monogram Logo */}
         <button
           id="nav-logo-btn"
           onClick={() => handleNav('/')}
-          className="flex items-center gap-2.5 sm:gap-3 group text-left transition-transform active:scale-95 focus:outline-none flex-shrink-0"
+          className="flex items-center group text-left transition-transform active:scale-95 focus:outline-none flex-shrink-0"
+          aria-label="AMANX ARCHIVE - Return to Home"
         >
-          <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl bg-gradient-to-br from-[#f0d892] via-[#d4af37] to-[#8a6d3b] p-[1px] shadow-[0_0_15px_rgba(212,175,55,0.3)] group-hover:shadow-[0_0_25px_rgba(212,175,55,0.5)] transition-all">
-            <div className="w-full h-full bg-[#08090d] rounded-[11px] flex items-center justify-center">
-              <span className="font-brand text-transparent bg-clip-text bg-gradient-to-b from-[#fff5d6] via-[#d4af37] to-[#b38b2d] font-bold text-base sm:text-lg tracking-tighter">
-                V
-              </span>
-            </div>
-          </div>
-          <div className="flex flex-col">
-            <span className="text-sm sm:text-base font-brand tracking-[0.25em] text-white leading-tight group-hover:text-[#f3e5ab] transition-colors">
-              VELORA
-            </span>
-            <span className="text-[8px] sm:text-[9px] uppercase tracking-[0.3em] text-[#d4af37] font-medium opacity-90">
-              Digital Archive
-            </span>
-          </div>
+          <AmanxLogo size="md" compactOnMobile={true} />
         </button>
 
         {/* Desktop Navigation Links: Home, Library, Categories, Collections, Resources, About */}

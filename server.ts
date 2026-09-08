@@ -24,10 +24,10 @@ async function startServer() {
   }
 
   app.listen(PORT, '0.0.0.0', () => {
-    console.log(`[VELORA] Server online at http://0.0.0.0:${PORT}`);
+    console.log(`[AMANX ARCHIVE] Server online at http://0.0.0.0:${PORT}`);
   });
 }
 
 startServer().catch(err => {
-  console.error('[VELORA] Failed to start server:', err);
+  console.error('[AMANX ARCHIVE] Failed to start server:', err);
 });

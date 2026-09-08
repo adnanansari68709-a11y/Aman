@@ -5,6 +5,7 @@ import {
 } from 'lucide-react';
 import { formatDownloadCount } from '../utils/formatters';
 import { INSTAGRAM_PROFILE_URL } from '../config/social';
+import { AmanxLogo } from './AmanxLogo';
 
 interface FooterProps {
   onNavigate: (route: string) => void;
@@ -42,23 +43,10 @@ export const Footer: React.FC<FooterProps> = ({ onNavigate, stats }) => {
           <div className="lg:col-span-2 space-y-4">
             <button
               onClick={() => onNavigate('/')}
-              className="flex items-center gap-3 text-left group"
+              className="flex items-center group text-left transition-transform active:scale-95 focus:outline-none"
+              aria-label="AMANX ARCHIVE - Return to Home"
             >
-              <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#f0d892] via-[#d4af37] to-[#8a6d3b] p-[1px] shadow-[0_0_15px_rgba(212,175,55,0.25)]">
-                <div className="w-full h-full bg-[#08090d] rounded-[11px] flex items-center justify-center">
-                  <span className="font-brand text-transparent bg-clip-text bg-gradient-to-b from-[#fff5d6] via-[#d4af37] to-[#b38b2d] font-bold text-xl tracking-tighter">
-                    V
-                  </span>
-                </div>
-              </div>
-              <div className="flex flex-col">
-                <span className="text-lg font-brand tracking-[0.25em] text-white leading-tight group-hover:text-[#f3e5ab] transition-colors">
-                  VELORA
-                </span>
-                <span className="text-[9px] uppercase tracking-[0.3em] text-[#d4af37] font-medium opacity-90">
-                  Digital Archive
-                </span>
-              </div>
+              <AmanxLogo size="lg" compactOnMobile={false} />
             </button>
 
             <p className="text-xs sm:text-sm text-zinc-400 font-light leading-relaxed max-w-sm">
@@ -257,7 +245,7 @@ export const Footer: React.FC<FooterProps> = ({ onNavigate, stats }) => {
         {/* Live Synchronized Telemetry Banner & Copyright */}
         <div className="pt-8 border-t border-white/[0.06] flex flex-col md:flex-row items-center justify-between text-xs text-zinc-500 gap-4">
           <div>
-            &copy; 2026 VELORA DIGITAL ARCHIVE. ALL RIGHTS RESERVED.
+            &copy; 2026 AMANX ARCHIVE. ALL RIGHTS RESERVED.
           </div>
 
           <div className="flex items-center gap-6 text-[11px] font-mono">

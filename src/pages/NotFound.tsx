@@ -18,7 +18,7 @@ export const NotFound: React.FC<NotFoundProps> = ({ onNavigate }) => {
         Archive Coordinate Not Located
       </h1>
       <p className="text-zinc-400 text-sm font-light mb-8 max-w-md mx-auto leading-relaxed">
-        The resource or route you requested does not exist or has been relocated to another sector within the VELORA repository.
+        The resource or route you requested does not exist or has been relocated to another sector within the AMANX ARCHIVE repository.
       </p>
       <div className="flex justify-center gap-4">
         <button

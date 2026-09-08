@@ -240,7 +240,7 @@ export const Home: React.FC<HomeProps> = ({
                 {/* Architectural interior looking onto moonlit mountain panorama */}
                 <img
                   src="https://images.unsplash.com/photo-1600585154340-be6161a56a0c?q=80&w=1600&auto=format&fit=crop"
-                  alt="Velora Sanctuary Vault"
+                  alt="AMANX Sanctuary Vault"
                   className="w-full h-full object-cover object-center opacity-85 scale-100 hover:scale-105 transition-transform duration-700 ease-out"
                 />
 
@@ -441,7 +441,7 @@ export const Home: React.FC<HomeProps> = ({
               <div className="relative w-full max-w-[220px] sm:max-w-[280px] h-[160px] sm:h-[240px] rounded-2xl overflow-hidden border border-white/10 shadow-2xl group">
                 <img
                   src="https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?q=80&w=800&auto=format&fit=crop"
-                  alt="Velora Premium 3D Artifact"
+                  alt="AMANX Premium 3D Artifact"
                   className="w-full h-full object-cover filter contrast-125 brightness-90 group-hover:scale-105 transition-transform duration-700"
                 />
                 <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent" />
@@ -517,7 +517,7 @@ export const Home: React.FC<HomeProps> = ({
                 </div>
                 <div>
                   <h3 className="text-sm sm:text-base font-medium text-white">
-                    VELORA Cinematic Vault Showcase
+                    AMANX ARCHIVE Cinematic Vault Showcase
                   </h3>
                   <span className="text-[9px] sm:text-[10px] text-zinc-400 uppercase tracking-widest font-mono">
                     High-Definition Architectural Tour
@@ -588,7 +588,7 @@ export const Home: React.FC<HomeProps> = ({
             </div>
 
             <h3 className="text-lg sm:text-2xl font-light text-white mb-2">
-              Velora Executive Tier
+              AMANX Executive Tier
             </h3>
             <p className="text-zinc-400 text-xs sm:text-sm font-light leading-relaxed mb-4 sm:mb-5">
               Our master vault includes enterprise-level throughput, raw uncompressed production master files, and dedicated single-owner ingestion channels.

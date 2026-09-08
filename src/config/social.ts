@@ -1,5 +1,5 @@
 /**
- * VELORA DIGITAL ARCHIVE - SOCIAL CONFIGURATION
+ * AMANX ARCHIVE - SOCIAL CONFIGURATION
  * 
  * Single configurable constant for the official Instagram profile.
  * Update this URL or username here whenever required.

@@ -17,7 +17,7 @@ export const About: React.FC<AboutProps> = ({ onNavigate }) => {
           Architected for <span className="italic font-serif text-[#D4AF37]">Excellence</span>.
         </h1>
         <p className="text-zinc-400 text-base sm:text-lg font-light leading-relaxed">
-          VELORA is an exclusive digital resource repository operated under a single-owner administrative model, guaranteeing strict provenance, cryptographic payload verification, and zero advertising intrusion.
+          AMANX ARCHIVE is an exclusive digital resource repository operated under a single-owner administrative model, guaranteeing strict provenance, cryptographic payload verification, and zero advertising intrusion.
         </p>
       </div>
 
@@ -29,7 +29,7 @@ export const About: React.FC<AboutProps> = ({ onNavigate }) => {
           </div>
           <h3 className="text-xl font-medium text-white mb-3">Single-Owner Governance</h3>
           <p className="text-zinc-400 text-sm font-light leading-relaxed">
-            Unlike public aggregators cluttered with unverified community uploads and adware installers, every byte on VELORA is directly authored or vetted by the primary administrator.
+            Unlike public aggregators cluttered with unverified community uploads and adware installers, every byte in the AMANX ARCHIVE is directly authored or vetted by the primary administrator.
           </p>
         </div>
 

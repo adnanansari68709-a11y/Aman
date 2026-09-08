@@ -1,0 +1,17 @@
+{
+  "name": "AMANX ARCHIVE — Premium Digital Resources",
+  "short_name": "AMANX ARCHIVE",
+  "description": "AMANX ARCHIVE is a premium digital resource library for discovering, viewing and downloading curated digital resources.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#060709",
+  "theme_color": "#060709",
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "sizes": "32x32 48x48 72x72 96x96 128x128 256x256 512x512",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

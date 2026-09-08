@@ -55,7 +55,7 @@ export const FileDetail: React.FC<FileDetailProps> = ({
         if (active) {
           setFile(data);
           // Set dynamic SEO metadata
-          document.title = `${data.title} | VELORA`;
+          document.title = `${data.title} | AMANX ARCHIVE`;
 
           // If text or json or csv or md, fetch preview text snippet
           const ext = getFileExtension(data.fileName).toLowerCase();

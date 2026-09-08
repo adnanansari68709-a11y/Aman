@@ -31,7 +31,7 @@ export const Legal: React.FC<LegalProps> = ({ type }) => {
                 <Shield className="w-4 h-4 text-[#D4AF37]" /> 1. No Third-Party Tracking
               </h2>
               <p>
-                VELORA does not utilize commercial ad-trackers, pixel beacons, or invasive behavioral fingerprinting. Visitors may freely search, inspect, and download published files without creating accounts or revealing personal telemetry.
+                AMANX ARCHIVE does not utilize commercial ad-trackers, pixel beacons, or invasive behavioral fingerprinting. Visitors may freely search, inspect, and download published files without creating accounts or revealing personal telemetry.
               </p>
             </section>
 
@@ -61,7 +61,7 @@ export const Legal: React.FC<LegalProps> = ({ type }) => {
                 <Scale className="w-4 h-4 text-[#D4AF37]" /> 1. Authorized Distribution
               </h2>
               <p>
-                All resources hosted on VELORA are legitimate proprietary digital assets, open-source releases, or works for which the administration holds valid distribution authorization. Unsolicited copyright infringements or malicious payloads are strictly prohibited.
+                All resources hosted on AMANX ARCHIVE are legitimate proprietary digital assets, open-source releases, or works for which the administration holds valid distribution authorization. Unsolicited copyright infringements or malicious payloads are strictly prohibited.
               </p>
             </section>
 
