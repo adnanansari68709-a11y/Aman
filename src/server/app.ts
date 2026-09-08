@@ -202,9 +202,46 @@ export function createApiApp() {
     res.json({ success: true, data: categories });
   });
 
-  function serveFileStream(req: Request, res: Response, fileStream: { stream: any; size: number; mimeType: string; fullPath?: string }, disposition: 'inline' | 'attachment', fileName: string) {
+  function serveFileStream(
+    req: Request,
+    res: Response,
+    fileResource: { stream?: any; buffer?: Buffer; size: number; mimeType: string; fullPath?: string },
+    disposition: 'inline' | 'attachment',
+    fileName: string,
+    overrideMime?: string
+  ) {
+    // 1. Determine accurate MIME type
+    let mimeType = overrideMime || fileResource.mimeType || 'application/octet-stream';
+    const ext = path.extname(fileName).toLowerCase();
+    if (ext === '.mp4') mimeType = 'video/mp4';
+    else if (ext === '.webm') mimeType = 'video/webm';
+    else if (ext === '.mov') mimeType = 'video/quicktime';
+    else if (ext === '.mp3') mimeType = 'audio/mpeg';
+    else if (ext === '.wav') mimeType = 'audio/wav';
+    else if (ext === '.pdf') mimeType = 'application/pdf';
+    else if (ext === '.png') mimeType = 'image/png';
+    else if (ext === '.jpg' || ext === '.jpeg') mimeType = 'image/jpeg';
+    else if (ext === '.webp') mimeType = 'image/webp';
+
+    // 2. Determine accurate total file size
+    let total = fileResource.size || 0;
+    if (fileResource.fullPath && fs.existsSync(fileResource.fullPath)) {
+      try {
+        const st = fs.statSync(fileResource.fullPath);
+        total = st.size;
+      } catch {}
+    } else if (fileResource.buffer) {
+      total = fileResource.buffer.length;
+    }
+
+    // 3. Base headers for media delivery and browser streaming
     res.setHeader('Accept-Ranges', 'bytes');
-    res.setHeader('Content-Type', fileStream.mimeType || 'application/octet-stream');
+    res.setHeader('Content-Type', mimeType);
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, HEAD, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Origin, Range, Content-Type, Accept, Authorization');
+    res.setHeader('Access-Control-Expose-Headers', 'Content-Range, Content-Length, Accept-Ranges');
+    res.setHeader('Cache-Control', 'public, max-age=86400');
 
     if (disposition === 'attachment') {
       res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(fileName)}"`);
@@ -212,29 +249,152 @@ export function createApiApp() {
       res.setHeader('Content-Disposition', `inline; filename="${encodeURIComponent(fileName)}"`);
     }
 
-    const range = req.headers.range;
-    if (range && fileStream.fullPath && fs.existsSync(fileStream.fullPath)) {
-      const total = fileStream.size;
-      const parts = range.replace(/bytes=/, '').split('-');
-      const start = parseInt(parts[0], 10);
-      const end = parts[1] ? parseInt(parts[1], 10) : total - 1;
-      if (!isNaN(start) && !isNaN(end) && start <= end && start < total) {
+    // 4. Handle HTTP Range Requests (RFC 7233 / RFC 9110 compliant)
+    const rangeHeader = req.headers.range;
+    const isServerless = Boolean(
+      process.env.NETLIFY || 
+      process.env.AWS_LAMBDA_FUNCTION_NAME || 
+      process.env.LAMBDA_TASK_ROOT
+    );
+    const MAX_STREAM_CHUNK = 2 * 1024 * 1024; // 2MB chunk cap in serverless to respect 6MB Lambda payload limits
+
+    if (rangeHeader && typeof rangeHeader === 'string' && rangeHeader.startsWith('bytes=') && total > 0) {
+      const rangeSpec = rangeHeader.replace(/^bytes=/, '').trim();
+      const firstRange = rangeSpec.split(',')[0].trim();
+      const dashIdx = firstRange.indexOf('-');
+
+      if (dashIdx !== -1) {
+        const startPart = firstRange.substring(0, dashIdx).trim();
+        const endPart = firstRange.substring(dashIdx + 1).trim();
+
+        let start: number;
+        let end: number;
+
+        if (!startPart && endPart) {
+          // Suffix byte range: e.g. bytes=-500 (last 500 bytes)
+          const suffix = parseInt(endPart, 10);
+          if (isNaN(suffix) || suffix <= 0) {
+            res.status(416);
+            res.setHeader('Content-Range', `bytes */${total}`);
+            return res.end();
+          }
+          start = Math.max(0, total - suffix);
+          end = total - 1;
+        } else if (startPart && !endPart) {
+          // Open-ended range: e.g. bytes=100- (from byte 100 to EOF)
+          start = parseInt(startPart, 10);
+          end = total - 1;
+        } else if (startPart && endPart) {
+          // Explicit range: e.g. bytes=0-1024
+          start = parseInt(startPart, 10);
+          end = parseInt(endPart, 10);
+        } else {
+          res.status(416);
+          res.setHeader('Content-Range', `bytes */${total}`);
+          return res.end();
+        }
+
+        // Validate range bounds
+        if (isNaN(start) || isNaN(end) || start < 0 || start >= total || start > end) {
+          res.status(416);
+          res.setHeader('Content-Range', `bytes */${total}`);
+          res.setHeader('Content-Length', '0');
+          return res.end();
+        }
+
+        // In serverless / lambda environments, limit maximum chunk size to 2MB to prevent payload overflow (RFC 7233 Section 4.1 compliant)
+        if (isServerless && (end - start + 1) > MAX_STREAM_CHUNK) {
+          end = start + MAX_STREAM_CHUNK - 1;
+        }
+
+        if (end >= total) {
+          end = total - 1;
+        }
+
         const chunkSize = (end - start) + 1;
-        const partialStream = fs.createReadStream(fileStream.fullPath, { start, end });
-        res.writeHead(206, {
-          'Content-Range': `bytes ${start}-${end}/${total}`,
-          'Accept-Ranges': 'bytes',
-          'Content-Length': chunkSize,
-          'Content-Type': fileStream.mimeType || 'application/octet-stream',
-          'Cache-Control': 'public, max-age=86400'
-        });
-        return partialStream.pipe(res);
+
+        // 206 Partial Content
+        res.status(206);
+        res.setHeader('Content-Range', `bytes ${start}-${end}/${total}`);
+        res.setHeader('Content-Length', String(chunkSize));
+
+        // For HEAD requests, do not send body payload
+        if (req.method === 'HEAD') {
+          return res.end();
+        }
+
+        // Serve byte slice from disk if file is located on filesystem
+        if (fileResource.fullPath && fs.existsSync(fileResource.fullPath)) {
+          const partialStream = fs.createReadStream(fileResource.fullPath, { start, end });
+          partialStream.on('error', (err) => {
+            console.error('Video partial read error:', err);
+            if (!res.headersSent) res.status(500).end();
+          });
+          res.on('close', () => {
+            partialStream.destroy();
+          });
+          return partialStream.pipe(res);
+        }
+
+        // Serve byte slice from memory buffer if available
+        if (fileResource.buffer) {
+          return res.end(fileResource.buffer.subarray(start, end + 1));
+        }
+
+        // Fallback: stream pipe
+        if (fileResource.stream) {
+          return fileResource.stream.pipe(res);
+        }
       }
     }
 
-    res.setHeader('Content-Length', fileStream.size);
-    res.setHeader('Cache-Control', 'public, max-age=86400');
-    return fileStream.stream.pipe(res);
+    // Guard against Lambda payload limit for video/audio if no range header is passed
+    if (!rangeHeader && isServerless && total > 3 * 1024 * 1024 && (mimeType.startsWith('video/') || mimeType.startsWith('audio/'))) {
+      const start = 0;
+      const end = Math.min(total - 1, MAX_STREAM_CHUNK - 1);
+      const chunkSize = (end - start) + 1;
+      res.status(206);
+      res.setHeader('Content-Range', `bytes ${start}-${end}/${total}`);
+      res.setHeader('Content-Length', String(chunkSize));
+      if (req.method === 'HEAD') return res.end();
+      if (fileResource.fullPath && fs.existsSync(fileResource.fullPath)) {
+        const partialStream = fs.createReadStream(fileResource.fullPath, { start, end });
+        return partialStream.pipe(res);
+      }
+      if (fileResource.buffer) {
+        return res.end(fileResource.buffer.subarray(start, end + 1));
+      }
+    }
+
+    // 5. Full file response (200 OK)
+    res.status(200);
+    res.setHeader('Content-Length', String(total));
+
+    if (req.method === 'HEAD') {
+      return res.end();
+    }
+
+    if (fileResource.fullPath && fs.existsSync(fileResource.fullPath)) {
+      const fullStream = fs.createReadStream(fileResource.fullPath);
+      fullStream.on('error', (err) => {
+        console.error('Video full read error:', err);
+        if (!res.headersSent) res.status(500).end();
+      });
+      res.on('close', () => {
+        fullStream.destroy();
+      });
+      return fullStream.pipe(res);
+    }
+
+    if (fileResource.buffer) {
+      return res.end(fileResource.buffer);
+    }
+
+    if (fileResource.stream) {
+      return fileResource.stream.pipe(res);
+    }
+
+    return res.end();
   }
 
   router.get('/public/files', async (req: Request, res: Response) => {
@@ -297,11 +457,15 @@ export function createApiApp() {
     });
   });
 
-  router.get('/public/files/:id/download', async (req: Request, res: Response) => {
+  const handleDownload = async (req: Request, res: Response) => {
     const { id } = req.params;
     let file = db.getFileById(id);
     if (!file) {
       file = db.getFileBySlug(id);
+    }
+    if (!file && (process.env.NETLIFY || process.env.AWS_LAMBDA_FUNCTION_NAME || process.env.LAMBDA_TASK_ROOT)) {
+      await db.syncFromNetlifyBlobs().catch(() => {});
+      file = db.getFileById(id) || db.getFileBySlug(id);
     }
     if (!file || !file.published) {
       return res.status(404).json({ success: false, error: 'File resource not found.' });
@@ -309,16 +473,16 @@ export function createApiApp() {
 
     const clientIp = (req.headers['x-forwarded-for'] as string) || req.socket.remoteAddress || '127.0.0.1';
     const userAgent = req.headers['user-agent'] || 'Unknown';
-    db.incrementDownload(file.id, clientIp, userAgent);
+    if (req.method !== 'HEAD') {
+      db.incrementDownload(file.id, clientIp, userAgent);
+    }
 
-    if (file.storagePath) {
-      let fileStream = storage.getFileStream(file.storagePath);
-      if (!fileStream) {
-        await storage.ensureFileOnDisk(file.storagePath);
-        fileStream = storage.getFileStream(file.storagePath);
-      }
-      if (fileStream) {
-        return serveFileStream(req, res, fileStream, 'attachment', file.fileName);
+    const storagePath = file.storagePath || (file.fileUrl?.startsWith('/api/public/files/raw/') ? file.fileUrl.replace('/api/public/files/raw/', '') : null);
+
+    if (storagePath) {
+      const resource = await storage.resolveFileResource(storagePath);
+      if (resource) {
+        return serveFileStream(req, res, resource, 'attachment', file.fileName, file.mimeType);
       }
     }
 
@@ -327,54 +491,87 @@ export function createApiApp() {
     }
 
     res.status(404).json({ success: false, error: 'Physical archive resource unavailable on storage node.' });
-  });
+  };
 
-  router.get('/public/files/:id/preview', async (req: Request, res: Response) => {
+  router.get('/public/files/:id/download', handleDownload);
+  router.head('/public/files/:id/download', handleDownload);
+
+  const handlePreview = async (req: Request, res: Response) => {
     const { id } = req.params;
     let file = db.getFileById(id);
     if (!file) {
       file = db.getFileBySlug(id);
     }
+    if (!file && (process.env.NETLIFY || process.env.AWS_LAMBDA_FUNCTION_NAME || process.env.LAMBDA_TASK_ROOT)) {
+      await db.syncFromNetlifyBlobs().catch(() => {});
+      file = db.getFileById(id) || db.getFileBySlug(id);
+    }
     if (!file) {
       return res.status(404).json({ success: false, error: 'File not found.' });
     }
 
-    if (file.storagePath) {
-      let fileStream = storage.getFileStream(file.storagePath);
-      if (!fileStream) {
-        await storage.ensureFileOnDisk(file.storagePath);
-        fileStream = storage.getFileStream(file.storagePath);
-      }
-      if (fileStream) {
-        return serveFileStream(req, res, fileStream, 'inline', file.fileName);
-      }
+    const candidatePaths = [
+      file.storagePath,
+      file.fileUrl?.startsWith('/api/public/files/raw/') ? file.fileUrl.replace('/api/public/files/raw/', '') : null,
+      file.fileUrl?.startsWith('/storage/') ? file.fileUrl.replace('/storage/', '') : null,
+      file.fileUrl?.startsWith('/data/uploads/') ? file.fileUrl.replace('/data/uploads/', '') : null,
+      file.fileName ? `files/${file.fileName}` : null,
+      file.fileName ? file.fileName : null,
+      file.storagePath ? path.basename(file.storagePath) : null
+    ].filter(Boolean) as string[];
+
+    let resource = null;
+    for (const candidate of Array.from(new Set(candidatePaths))) {
+      resource = await storage.resolveFileResource(candidate);
+      if (resource) break;
     }
 
-    if (file.fileUrl && file.fileUrl.startsWith('http')) {
+    if (resource) {
+      return serveFileStream(req, res, resource, 'inline', file.fileName, file.mimeType);
+    }
+
+    if (file.fileUrl && (file.fileUrl.startsWith('http://') || file.fileUrl.startsWith('https://'))) {
       return res.redirect(file.fileUrl);
     }
 
     res.status(404).json({ success: false, error: 'Preview content unavailable.' });
-  });
+  };
 
-  router.get('/public/files/raw/*', async (req: Request, res: Response) => {
-    const rawPath = req.params[0];
+  router.get('/public/files/:id/preview', handlePreview);
+  router.head('/public/files/:id/preview', handlePreview);
+
+  const handleRaw = async (req: Request, res: Response) => {
+    const rawPath = req.params[0] || (req.params as any).path || '';
     if (!rawPath) {
       return res.status(400).json({ success: false, error: 'Invalid file path.' });
     }
 
-    let fileStream = storage.getFileStream(rawPath);
-    if (!fileStream) {
-      await storage.ensureFileOnDisk(rawPath);
-      fileStream = storage.getFileStream(rawPath);
+    const candidatePaths = [
+      rawPath,
+      rawPath.replace(/^\/+/, ''),
+      `files/${path.basename(rawPath)}`,
+      `thumbnails/${path.basename(rawPath)}`,
+      path.basename(rawPath)
+    ];
+
+    let resource = null;
+    for (const candidate of Array.from(new Set(candidatePaths))) {
+      resource = await storage.resolveFileResource(candidate);
+      if (resource) break;
     }
-    if (!fileStream) {
+
+    if (!resource) {
       return res.status(404).json({ success: false, error: 'Raw resource not located in storage system.' });
     }
 
     const fileName = path.basename(rawPath);
-    return serveFileStream(req, res, fileStream, 'inline', fileName);
-  });
+    return serveFileStream(req, res, resource, 'inline', fileName);
+  };
+
+  router.get('/public/files/raw/*', handleRaw);
+  router.head('/public/files/raw/*', handleRaw);
+  router.get('/storage/*', handleRaw);
+  router.head('/storage/*', handleRaw);
 
   router.post('/public/contact', (req: Request, res: Response) => {
     const { name, email, subject, message } = req.body;

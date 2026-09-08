@@ -17,9 +17,9 @@ function getNetlifyBlobStore(storeName: string) {
   const token = process.env.NETLIFY_BLOBS_TOKEN || process.env.NETLIFY_AUTH_TOKEN || process.env.NETLIFY_API_TOKEN;
   try {
     if (siteID && token) {
-      return netlifyBlobsModule.getStore({ name: storeName, siteID, token, consistency: 'strong' });
+      return netlifyBlobsModule.getStore({ name: storeName, siteID, token });
     }
-    return netlifyBlobsModule.getStore({ name: storeName, consistency: 'strong' });
+    return netlifyBlobsModule.getStore({ name: storeName });
   } catch {
     try {
       return netlifyBlobsModule.getStore(storeName);
@@ -37,10 +37,19 @@ export interface SavedFileInfo {
   publicUrl: string;
 }
 
+export interface ResolvedResource {
+  stream?: Readable;
+  buffer?: Buffer;
+  size: number;
+  mimeType: string;
+  fullPath?: string;
+}
+
 export interface IStorageProvider {
   saveFile(file: Express.Multer.File, subFolder?: string): Promise<SavedFileInfo>;
   getFileStream(storagePath: string): { stream: Readable; size: number; mimeType: string; fullPath?: string } | null;
   ensureFileOnDisk(storagePath: string): Promise<string | null>;
+  resolveFileResource(storagePath: string): Promise<ResolvedResource | null>;
   deleteFile(storagePath: string): Promise<boolean>;
   fileExists(storagePath: string): boolean;
   saveBuffer(buffer: Buffer, fileName: string, mimeType: string, subFolder?: string): Promise<SavedFileInfo>;
@@ -60,7 +69,13 @@ export class LocalStorageProvider implements IStorageProvider {
       process.env.AWS_LAMBDA_FUNCTION_NAME || 
       process.env.LAMBDA_TASK_ROOT
     );
-    this.baseDir = customBaseDir || process.env.STORAGE_DIR || (isServerless ? '/tmp/uploads' : path.join(process.cwd(), 'data', 'uploads'));
+    if (customBaseDir) {
+      this.baseDir = customBaseDir;
+    } else if (isServerless) {
+      this.baseDir = '/tmp/uploads';
+    } else {
+      this.baseDir = process.env.STORAGE_DIR || path.join(process.cwd(), 'data', 'uploads');
+    }
     this.ensureDirectory(this.baseDir);
     this.ensureDirectory(path.join(this.baseDir, 'thumbnails'));
     this.ensureDirectory(path.join(this.baseDir, 'files'));
@@ -201,21 +216,108 @@ export class LocalStorageProvider implements IStorageProvider {
       }
     }
 
-    // Try to fetch from Netlify Blobs
+    // Try to fetch from Netlify Blobs with multi-key fallbacks
     try {
       const store = getNetlifyBlobStore('velora-files');
       if (store) {
         const normalized = storagePath.replace(/\\/g, '/');
-        const data = await store.get(normalized, { type: 'arrayBuffer' });
-        if (data) {
-          const target = path.isAbsolute(storagePath) ? storagePath : path.join(this.baseDir, storagePath);
-          this.ensureDirectory(path.dirname(target));
-          fs.writeFileSync(target, Buffer.from(data));
-          return target;
+        const candidateKeys = Array.from(new Set([
+          normalized,
+          path.basename(normalized),
+          `files/${path.basename(normalized)}`,
+          `thumbnails/${path.basename(normalized)}`,
+          normalized.replace(/^files\//, ''),
+          normalized.replace(/^\/+/, '')
+        ]));
+
+        for (const blobKey of candidateKeys) {
+          try {
+            const data = await store.get(blobKey, { type: 'arrayBuffer' });
+            if (data && data.byteLength > 0) {
+              const buffer = Buffer.from(data);
+              const writeTargets = [
+                path.isAbsolute(storagePath) ? storagePath : path.join(this.baseDir, storagePath),
+                path.join('/tmp', 'uploads', storagePath),
+                path.join('/tmp', 'uploads', 'files', path.basename(storagePath)),
+                path.join(process.cwd(), 'data', 'uploads', storagePath),
+                path.join(process.cwd(), 'storage', storagePath)
+              ];
+              for (const target of writeTargets) {
+                try {
+                  this.ensureDirectory(path.dirname(target));
+                  fs.writeFileSync(target, buffer);
+                  return target;
+                } catch {}
+              }
+            }
+          } catch {}
         }
       }
     } catch (err) {
       console.warn('Notice: Netlify Blobs restore fallback skipped:', err);
+    }
+
+    return null;
+  }
+
+  public async resolveFileResource(storagePath: string): Promise<ResolvedResource | null> {
+    // 1. First attempt to resolve stream from local filesystem
+    const diskStream = this.getFileStream(storagePath);
+    if (diskStream) {
+      return diskStream;
+    }
+
+    // 2. Attempt to restore from persistent Netlify Blob storage to disk
+    const diskPath = await this.ensureFileOnDisk(storagePath);
+    if (diskPath && fs.existsSync(diskPath)) {
+      const rechecked = this.getFileStream(diskPath) || this.getFileStream(storagePath);
+      if (rechecked) {
+        return rechecked;
+      }
+    }
+
+    // 3. Fallback: stream directly from Netlify Blobs arrayBuffer in-memory (e.g. read-only serverless container)
+    try {
+      const store = getNetlifyBlobStore('velora-files');
+      if (store) {
+        const normalized = storagePath.replace(/\\/g, '/');
+        const candidateKeys = Array.from(new Set([
+          normalized,
+          path.basename(normalized),
+          `files/${path.basename(normalized)}`,
+          `thumbnails/${path.basename(normalized)}`,
+          normalized.replace(/^files\//, ''),
+          normalized.replace(/^\/+/, '')
+        ]));
+
+        for (const blobKey of candidateKeys) {
+          try {
+            const data = await store.get(blobKey, { type: 'arrayBuffer' });
+            if (data && data.byteLength > 0) {
+              const buffer = Buffer.from(data);
+              const ext = path.extname(storagePath).toLowerCase();
+              let mimeType = 'application/octet-stream';
+              if (ext === '.mp4') mimeType = 'video/mp4';
+              else if (ext === '.webm') mimeType = 'video/webm';
+              else if (ext === '.mov') mimeType = 'video/quicktime';
+              else if (ext === '.mp3') mimeType = 'audio/mpeg';
+              else if (ext === '.wav') mimeType = 'audio/wav';
+              else if (ext === '.pdf') mimeType = 'application/pdf';
+              else if (ext === '.jpg' || ext === '.jpeg') mimeType = 'image/jpeg';
+              else if (ext === '.png') mimeType = 'image/png';
+              else if (ext === '.webp') mimeType = 'image/webp';
+
+              return {
+                buffer,
+                size: buffer.length,
+                mimeType
+              };
+            }
+          } catch {}
+        }
+      }
+    } catch (err) {
+      console.warn('Notice: direct Netlify Blobs resolution skipped:', err);
     }
 
     return null;

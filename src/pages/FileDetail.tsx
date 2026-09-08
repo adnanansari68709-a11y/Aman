@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   Download,
   Calendar,
@@ -13,7 +13,8 @@ import {
   Share2,
   FileText,
   Play,
-  Sparkles
+  Sparkles,
+  RefreshCw
 } from 'lucide-react';
 import { FileResource } from '../types';
 import { api } from '../services/api';
@@ -40,6 +41,15 @@ export const FileDetail: React.FC<FileDetailProps> = ({
   const [previewTextContent, setPreviewTextContent] = useState<string | null>(null);
   const [loadingPreviewText, setLoadingPreviewText] = useState(false);
   const [copiedUrl, setCopiedUrl] = useState(false);
+  const [videoError, setVideoError] = useState<string | null>(null);
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+
+  useEffect(() => {
+    if (file && videoRef.current) {
+      setVideoError(null);
+      videoRef.current.load();
+    }
+  }, [file?.id]);
 
   useEffect(() => {
     let active = true;
@@ -211,16 +221,71 @@ export const FileDetail: React.FC<FileDetailProps> = ({
                   className="max-h-[440px] w-full object-contain rounded-xl p-2"
                 />
               ) : isVideo ? (
-                <video
-                  controls
-                  playsInline
-                  preload="metadata"
-                  src={api.getPreviewUrl(file.id)}
-                  className="w-full max-h-[440px] rounded-xl bg-black"
-                  poster={thumb || undefined}
-                >
-                  Your browser does not support video playback.
-                </video>
+                <div className="w-full relative flex flex-col items-center justify-center">
+                  <video
+                    key={file.id}
+                    ref={videoRef}
+                    controls
+                    playsInline
+                    preload="metadata"
+                    src={api.getPreviewUrl(file.id)}
+                    className="w-full max-h-[460px] rounded-xl bg-black"
+                    poster={thumb || undefined}
+                    onLoadedMetadata={() => {
+                      setVideoError(null);
+                    }}
+                    onError={(e) => {
+                      const target = e.currentTarget;
+                      const mediaErr = target.error;
+                      let msg = 'Playback interrupted. You can retry streaming or download the video directly.';
+                      if (mediaErr?.code === 1) msg = 'Video loading was aborted.';
+                      else if (mediaErr?.code === 2) msg = 'A network error occurred while streaming the video.';
+                      else if (mediaErr?.code === 3) msg = 'Media decode error or video stream corrupt.';
+                      else if (mediaErr?.code === 4) msg = 'Video format not supported by browser or stream unavailable.';
+                      setVideoError(msg);
+                    }}
+                  >
+                    <source src={api.getPreviewUrl(file.id)} type={file.mimeType || 'video/mp4'} />
+                    {file.fileUrl && file.fileUrl !== api.getPreviewUrl(file.id) && (
+                      <source
+                        src={file.fileUrl.startsWith('http') ? file.fileUrl : `${window.location.origin}${file.fileUrl}`}
+                        type={file.mimeType || 'video/mp4'}
+                      />
+                    )}
+                    Your browser does not support HTML5 video playback.
+                  </video>
+
+                  {videoError && (
+                    <div className="absolute inset-0 bg-black/90 backdrop-blur-sm rounded-xl flex flex-col items-center justify-center p-6 text-center z-10">
+                      <div className="w-12 h-12 rounded-xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-amber-400 mb-3">
+                        <AlertCircle className="w-6 h-6" />
+                      </div>
+                      <h4 className="text-white font-medium text-sm mb-1">Playback Issue</h4>
+                      <p className="text-xs text-zinc-400 max-w-sm mb-4 leading-relaxed">{videoError}</p>
+                      <div className="flex items-center gap-3">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setVideoError(null);
+                            if (videoRef.current) {
+                              videoRef.current.load();
+                            }
+                          }}
+                          className="px-3.5 py-1.5 rounded-lg bg-white/10 hover:bg-white/15 text-white text-xs font-medium transition-colors flex items-center gap-1.5"
+                        >
+                          <RefreshCw className="w-3.5 h-3.5" /> Retry Stream
+                        </button>
+                        <button
+                          type="button"
+                          onClick={handleDownload}
+                          className="px-3.5 py-1.5 rounded-lg bg-[#D4AF37] hover:bg-[#c49f2f] text-black text-xs font-semibold transition-colors flex items-center gap-1.5"
+                        >
+                          <Download className="w-3.5 h-3.5" /> Download Media
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
               ) : isAudio ? (
                 <div className="w-full p-8 flex flex-col items-center justify-center space-y-6">
                   <div className="w-20 h-20 rounded-full border-2 border-[#D4AF37]/30 flex items-center justify-center bg-[#D4AF37]/10">

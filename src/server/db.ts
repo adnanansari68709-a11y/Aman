@@ -34,9 +34,9 @@ function getNetlifyDbStore() {
   const token = process.env.NETLIFY_BLOBS_TOKEN || process.env.NETLIFY_AUTH_TOKEN || process.env.NETLIFY_API_TOKEN;
   try {
     if (siteID && token) {
-      return netlifyBlobsModule.getStore({ name: 'velora-db', siteID, token, consistency: 'strong' });
+      return netlifyBlobsModule.getStore({ name: 'velora-db', siteID, token });
     }
-    return netlifyBlobsModule.getStore({ name: 'velora-db', consistency: 'strong' });
+    return netlifyBlobsModule.getStore({ name: 'velora-db' });
   } catch {
     try {
       return netlifyBlobsModule.getStore('velora-db');

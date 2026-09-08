@@ -19,12 +19,16 @@ const serverlessHandler = serverless(app, {
     'application/octet-stream',
     'application/pdf',
     'application/zip',
-    'application/x-zip-compressed'
+    'application/x-zip-compressed',
+    'video/mp4',
+    'video/webm',
+    'video/quicktime',
+    '*/*'
   ]
 });
 
 export const handler = async (event: any, context: any) => {
-  if (event && netlifyBlobsModule && typeof netlifyBlobsModule.connectLambda === 'function') {
+  if (event && event.blobs && typeof event.blobs === 'string' && netlifyBlobsModule && typeof netlifyBlobsModule.connectLambda === 'function') {
     try {
       netlifyBlobsModule.connectLambda(event);
     } catch (e) {
